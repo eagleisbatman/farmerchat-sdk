@@ -73,15 +73,7 @@ internal fun MarkdownContent(
 
     Column(modifier = modifier) {
         blocks.forEach { block ->
-            try {
-                RenderBlock(block)
-            } catch (e: Exception) {
-                Log.w("FC.Markdown", "Render block failed", e)
-                Text(
-                    text = block.rawText(),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
+            RenderBlock(block)
         }
     }
 }

@@ -29,12 +29,6 @@ jobs:
         working-directory: packages/ios-swiftui
         run: swift test
 
-      - name: Build XCFramework
-        working-directory: packages/ios-swiftui
-        run: |
-          chmod +x build-xcframework.sh
-          ./build-xcframework.sh
-
   build-uikit:
     runs-on: macos-15
     steps:
@@ -47,9 +41,3 @@ jobs:
       - name: Run Tests
         working-directory: packages/ios-uikit
         run: swift test
-
-      - name: Build XCFramework
-        working-directory: packages/ios-uikit
-        run: |
-          chmod +x build-xcframework.sh
-          ./build-xcframework.sh
