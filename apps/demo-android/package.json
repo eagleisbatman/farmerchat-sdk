@@ -1,0 +1,9 @@
+{
+  "name": "@digitalgreenorg/demo-android",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "./gradlew build",
+    "clean": "./gradlew clean"
+  }
+}

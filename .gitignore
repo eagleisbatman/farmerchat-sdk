@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+*.xcframework/
+*.aar
+*.framework
+
+# IDE
+.idea/
+*.xcworkspace/
+*.xcuserdata/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Turborepo
+.turbo/
+
+# iOS
+Pods/
+DerivedData/
+.build/
+.swiftpm/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+xcuserdata/
+
+# Android
+.gradle/
+local.properties
+*.apk
+*.aab
+captures/
+
+# Testing
+coverage/
+
+# Generated
+packages/android-views/**/generated/
+packages/android-compose/**/generated/
+packages/ios-swiftui/**/Generated/
+packages/ios-uikit/**/Generated/
+
+# Docs
+packages/docs/.docusaurus/
+packages/docs/build/

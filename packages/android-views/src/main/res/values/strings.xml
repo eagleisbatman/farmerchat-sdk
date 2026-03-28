@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- General -->
+    <string name="fc_app_name">FarmerChat</string>
+    <string name="fc_back">Back</string>
+    <string name="fc_retry">Retry</string>
+    <string name="fc_skip">Skip</string>
+    <string name="fc_send">Send</string>
+    <string name="fc_camera">Camera</string>
+    <string name="fc_voice">Voice</string>
+    <string name="fc_close">Close</string>
+
+    <!-- Chat screen -->
+    <string name="fc_message_hint">Type your question…</string>
+    <string name="fc_history">History</string>
+    <string name="fc_profile">Profile</string>
+    <string name="fc_thumbs_up">Thumbs up</string>
+    <string name="fc_thumbs_down">Thumbs down</string>
+    <string name="fc_assistant_avatar">FarmerChat assistant</string>
+    <string name="fc_image_preview">Image preview</string>
+
+    <!-- Starter questions -->
+    <string name="fc_starter_title">How can I help you?</string>
+    <string name="fc_starter_subtitle">Try asking one of these questions</string>
+
+    <!-- Onboarding -->
+    <string name="fc_onboarding_location_title">Share Your Location</string>
+    <string name="fc_onboarding_location_description">We use your location to provide farming advice specific to your region and climate.</string>
+    <string name="fc_share_location">Share Location</string>
+    <string name="fc_location_icon">Location</string>
+    <string name="fc_onboarding_language_title">Choose Your Language</string>
+    <string name="fc_onboarding_language_subtitle">Select the language you\'d like to chat in</string>
+    <string name="fc_get_started">Get Started</string>
+
+    <!-- History -->
+    <string name="fc_no_history">No conversations yet</string>
+
+    <!-- Profile -->
+    <string name="fc_language_setting">Language</string>
+    <string name="fc_powered_by">Powered by FarmerChat</string>
+
+    <!-- Connectivity -->
+    <string name="fc_no_connection">No internet connection</string>
+    <string name="fc_no_connection_icon">Warning</string>
+
+    <!-- Errors -->
+    <string name="fc_error_generic">Something went wrong. Please try again.</string>
+    <string name="fc_error_not_initialized">FarmerChat SDK is not initialized</string>
+
+</resources>

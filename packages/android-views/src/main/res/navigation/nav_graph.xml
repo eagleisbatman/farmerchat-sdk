@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/onboarding_location_fragment">
+
+    <!-- Onboarding: Location Step -->
+    <fragment
+        android:id="@+id/onboarding_location_fragment"
+        android:name="org.digitalgreen.farmerchat.views.ui.fragments.OnboardingLocationFragment"
+        android:label="@string/fc_onboarding_location_title">
+
+        <action
+            android:id="@+id/action_onboarding_location_to_language"
+            app:destination="@id/onboarding_language_fragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+    </fragment>
+
+    <!-- Onboarding: Language Step -->
+    <fragment
+        android:id="@+id/onboarding_language_fragment"
+        android:name="org.digitalgreen.farmerchat.views.ui.fragments.OnboardingLanguageFragment"
+        android:label="@string/fc_onboarding_language_title">
+
+        <action
+            android:id="@+id/action_onboarding_language_to_chat"
+            app:destination="@id/chat_fragment"
+            app:popUpTo="@id/onboarding_location_fragment"
+            app:popUpToInclusive="true"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim" />
+    </fragment>
+
+    <!-- Chat Screen (main) -->
+    <fragment
+        android:id="@+id/chat_fragment"
+        android:name="org.digitalgreen.farmerchat.views.ui.fragments.ChatFragment"
+        android:label="@string/fc_app_name">
+
+        <action
+            android:id="@+id/action_chat_to_history"
+            app:destination="@id/history_fragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+
+        <action
+            android:id="@+id/action_chat_to_profile"
+            app:destination="@id/profile_fragment"
+            app:enterAnim="@anim/nav_default_enter_anim"
+            app:exitAnim="@anim/nav_default_exit_anim"
+            app:popEnterAnim="@anim/nav_default_pop_enter_anim"
+            app:popExitAnim="@anim/nav_default_pop_exit_anim" />
+    </fragment>
+
+    <!-- History Screen -->
+    <fragment
+        android:id="@+id/history_fragment"
+        android:name="org.digitalgreen.farmerchat.views.ui.fragments.HistoryFragment"
+        android:label="@string/fc_history" />
+
+    <!-- Profile Screen -->
+    <fragment
+        android:id="@+id/profile_fragment"
+        android:name="org.digitalgreen.farmerchat.views.ui.fragments.ProfileFragment"
+        android:label="@string/fc_profile" />
+
+</navigation>

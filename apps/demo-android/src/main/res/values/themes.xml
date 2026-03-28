@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.FarmerChatDemo" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/fc_primary</item>
+        <item name="colorOnPrimary">@color/fc_on_primary</item>
+        <item name="colorPrimaryContainer">@color/fc_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/fc_on_primary_container</item>
+        <item name="colorSecondary">@color/fc_secondary</item>
+        <item name="colorSurface">@color/fc_surface</item>
+        <item name="colorOnSurface">@color/fc_on_surface</item>
+        <item name="android:colorBackground">@color/fc_background</item>
+        <item name="colorOnBackground">@color/fc_on_background</item>
+        <item name="colorOutline">@color/fc_outline</item>
+        <item name="android:statusBarColor">@color/fc_primary</item>
+        <item name="android:navigationBarColor">@color/fc_surface</item>
+    </style>
+</resources>

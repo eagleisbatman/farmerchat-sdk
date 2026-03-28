@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Primary brand colors -->
+    <color name="fc_primary">#1B6B3A</color>
+    <color name="fc_primary_dark">#145A2F</color>
+    <color name="fc_primary_light">#2D8F4E</color>
+    <color name="fc_on_primary">#FFFFFF</color>
+
+    <!-- Secondary / accent -->
+    <color name="fc_secondary">#F0F7F2</color>
+    <color name="fc_on_secondary">#1B6B3A</color>
+
+    <!-- Backgrounds -->
+    <color name="fc_background">#FFFFFF</color>
+    <color name="fc_surface">#FFFFFF</color>
+    <color name="fc_card_background">#FFFFFF</color>
+    <color name="fc_selected_language_bg">#E8F5E9</color>
+
+    <!-- Text colors -->
+    <color name="fc_text_primary">#1C1B1F</color>
+    <color name="fc_text_secondary">#6B6B6B</color>
+    <color name="fc_text_hint">#9E9E9E</color>
+
+    <!-- Chat bubbles -->
+    <color name="fc_user_bubble">#1B6B3A</color>
+    <color name="fc_on_user_bubble">#FFFFFF</color>
+    <color name="fc_assistant_bubble">#F0F7F2</color>
+    <color name="fc_on_assistant_bubble">#1C1B1F</color>
+
+    <!-- Status colors -->
+    <color name="fc_error">#D32F2F</color>
+    <color name="fc_error_background">#FDECEA</color>
+    <color name="fc_warning">#F57C00</color>
+    <color name="fc_warning_background">#FFF3E0</color>
+    <color name="fc_success">#388E3C</color>
+
+    <!-- Divider -->
+    <color name="fc_divider">#E0E0E0</color>
+
+</resources>

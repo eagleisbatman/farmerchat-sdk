@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FarmerChat Demo</string>
+    <string name="tab_compose">Compose SDK</string>
+    <string name="tab_views">Views SDK</string>
+    <string name="demo_title">FarmerChat SDK</string>
+    <string name="demo_subtitle">Embeddable AI-powered agricultural advisory chat</string>
+    <string name="compose_description">Jetpack Compose integration.\nTap the FAB to launch the chat widget.</string>
+    <string name="views_description">XML Views integration.\nTap the FAB to launch the chat widget.</string>
+    <string name="sdk_not_initialized">SDK not initialized. Check logs for details.</string>
+</resources>

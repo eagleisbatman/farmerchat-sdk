@@ -1,0 +1,12 @@
+[
+  { "code": "en", "name": "English", "nativeName": "English" },
+  { "code": "hi", "name": "Hindi", "nativeName": "हिन्दी" },
+  { "code": "mr", "name": "Marathi", "nativeName": "मराठी" },
+  { "code": "te", "name": "Telugu", "nativeName": "తెలుగు" },
+  { "code": "ta", "name": "Tamil", "nativeName": "தமிழ்" },
+  { "code": "kn", "name": "Kannada", "nativeName": "ಕನ್ನಡ" },
+  { "code": "sw", "name": "Swahili", "nativeName": "Kiswahili" },
+  { "code": "fr", "name": "French", "nativeName": "Français" },
+  { "code": "pt", "name": "Portuguese", "nativeName": "Português" },
+  { "code": "am", "name": "Amharic", "nativeName": "አማርኛ" }
+]

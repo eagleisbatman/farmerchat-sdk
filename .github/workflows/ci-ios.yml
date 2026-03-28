@@ -1,0 +1,55 @@
+name: CI — iOS
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/ios-swiftui/**"
+      - "packages/ios-uikit/**"
+  pull_request:
+    paths:
+      - "packages/ios-swiftui/**"
+      - "packages/ios-uikit/**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-swiftui:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build SwiftUI Package
+        working-directory: packages/ios-swiftui
+        run: swift build
+
+      - name: Run Tests
+        working-directory: packages/ios-swiftui
+        run: swift test
+
+      - name: Build XCFramework
+        working-directory: packages/ios-swiftui
+        run: |
+          chmod +x build-xcframework.sh
+          ./build-xcframework.sh
+
+  build-uikit:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build UIKit Package
+        working-directory: packages/ios-uikit
+        run: swift build
+
+      - name: Run Tests
+        working-directory: packages/ios-uikit
+        run: swift test
+
+      - name: Build XCFramework
+        working-directory: packages/ios-uikit
+        run: |
+          chmod +x build-xcframework.sh
+          ./build-xcframework.sh

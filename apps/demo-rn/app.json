@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "FarmerChat Demo",
+    "slug": "farmerchat-demo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "farmerchat-demo",
+    "platforms": ["ios", "android"],
+    "ios": {
+      "bundleIdentifier": "org.digitalgreen.farmerchat.demo",
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1B6B3A"
+      },
+      "package": "org.digitalgreen.farmerchat.demo.rn"
+    },
+    "plugins": [
+      "expo-router"
+    ]
+  }
+}

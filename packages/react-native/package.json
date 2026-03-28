@@ -1,0 +1,40 @@
+{
+  "name": "@digitalgreenorg/farmerchat-react-native",
+  "version": "0.0.0",
+  "description": "FarmerChat SDK for React Native (Expo)",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "expo-module.config.json"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "test": "jest",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@digitalgreenorg/farmerchat-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "expo": ">=55.0.0",
+    "expo-image-picker": ">=55.0.0",
+    "react": ">=19.0.0",
+    "react-native": ">=0.83.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "jest": "^29.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0"
+  }
+}

@@ -1,0 +1,45 @@
+name: CI — Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "packages/web/**"
+      - "packages/core/**"
+      - "pnpm-lock.yaml"
+  pull_request:
+    paths:
+      - "packages/web/**"
+      - "packages/core/**"
+      - "pnpm-lock.yaml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm --filter @digitalgreenorg/farmerchat-web lint
+
+      - name: Typecheck
+        run: pnpm --filter @digitalgreenorg/farmerchat-web typecheck
+
+      - name: Build
+        run: pnpm --filter @digitalgreenorg/farmerchat-web build
+
+      - name: Test
+        run: pnpm --filter @digitalgreenorg/farmerchat-web test

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fc_primary">#1B6B3A</color>
+    <color name="fc_on_primary">#FFFFFF</color>
+    <color name="fc_primary_container">#F0F7F2</color>
+    <color name="fc_on_primary_container">#1B6B3A</color>
+    <color name="fc_secondary">#4E8D60</color>
+    <color name="fc_surface">#FFFFFF</color>
+    <color name="fc_on_surface">#1C1B1F</color>
+    <color name="fc_background">#FAFDF7</color>
+    <color name="fc_on_background">#1C1B1F</color>
+    <color name="fc_outline">#73796E</color>
+</resources>

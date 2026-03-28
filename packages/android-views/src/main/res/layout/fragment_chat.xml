@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/fc_background">
+
+    <!-- Toolbar -->
+    <LinearLayout
+        android:id="@+id/toolbar"
+        android:layout_width="0dp"
+        android:layout_height="@dimen/fc_toolbar_height"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="@dimen/fc_padding_medium"
+        android:background="@color/fc_primary"
+        android:elevation="@dimen/fc_elevation_small"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/toolbar_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/fc_on_primary"
+            android:textSize="@dimen/fc_text_title"
+            android:textStyle="bold"
+            tools:text="FarmerChat" />
+
+        <ImageButton
+            android:id="@+id/btn_history"
+            android:layout_width="@dimen/fc_icon_button_size"
+            android:layout_height="@dimen/fc_icon_button_size"
+            android:src="@android:drawable/ic_menu_recent_history"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/fc_history"
+            app:tint="@color/fc_on_primary" />
+
+        <ImageButton
+            android:id="@+id/btn_profile"
+            android:layout_width="@dimen/fc_icon_button_size"
+            android:layout_height="@dimen/fc_icon_button_size"
+            android:layout_marginStart="@dimen/fc_padding_small"
+            android:src="@android:drawable/ic_menu_manage"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/fc_profile"
+            app:tint="@color/fc_on_primary" />
+    </LinearLayout>
+
+    <!-- Connectivity Banner -->
+    <org.digitalgreen.farmerchat.views.ui.views.ConnectivityBannerView
+        android:id="@+id/connectivity_banner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible" />
+
+    <!-- Starter Questions Area (visible when no messages) -->
+    <ScrollView
+        android:id="@+id/starter_questions_area"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        android:padding="@dimen/fc_padding_medium"
+        app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
+        app:layout_constraintBottom_toTopOf="@id/error_banner"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/fc_starter_title"
+                android:textSize="@dimen/fc_text_heading"
+                android:textColor="@color/fc_text_primary"
+                android:textStyle="bold"
+                android:layout_marginBottom="@dimen/fc_padding_medium" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/fc_starter_subtitle"
+                android:textSize="@dimen/fc_text_body"
+                android:textColor="@color/fc_text_secondary"
+                android:layout_marginBottom="@dimen/fc_padding_large" />
+
+            <com.google.android.material.chip.ChipGroup
+                android:id="@+id/starter_chips_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:chipSpacing="@dimen/fc_padding_small" />
+        </LinearLayout>
+    </ScrollView>
+
+    <!-- Messages RecyclerView -->
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recycler_messages"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:clipToPadding="false"
+        android:padding="@dimen/fc_padding_small"
+        app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
+        app:layout_constraintBottom_toTopOf="@id/error_banner"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:listitem="@layout/item_message_user" />
+
+    <!-- Error Banner -->
+    <LinearLayout
+        android:id="@+id/error_banner"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="@dimen/fc_padding_small"
+        android:background="@color/fc_error_background"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/sending_indicator"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="gone">
+
+        <TextView
+            android:id="@+id/error_text"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/fc_error"
+            android:textSize="@dimen/fc_text_caption"
+            tools:text="Something went wrong" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btn_retry"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/fc_retry"
+            android:textColor="@color/fc_primary" />
+    </LinearLayout>
+
+    <!-- Sending Indicator -->
+    <com.google.android.material.progressindicator.LinearProgressIndicator
+        android:id="@+id/sending_indicator"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        app:indicatorColor="@color/fc_primary"
+        app:layout_constraintBottom_toTopOf="@id/input_bar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="gone" />
+
+    <!-- Input Bar -->
+    <org.digitalgreen.farmerchat.views.ui.views.InputBarView
+        android:id="@+id/input_bar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:background="@color/fc_surface"
+        android:elevation="@dimen/fc_elevation_medium"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

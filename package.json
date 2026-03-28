@@ -1,0 +1,31 @@
+{
+  "name": "farmerchat-sdk",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "codegen": "turbo run codegen",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "dev": "turbo run dev",
+    "build:core": "turbo run build --filter=@digitalgreenorg/farmerchat-core",
+    "build:android-compose": "turbo run build --filter=@digitalgreenorg/farmerchat-android-compose...",
+    "build:ios-swiftui": "turbo run build --filter=@digitalgreenorg/farmerchat-ios-swiftui...",
+    "build:react-native": "turbo run build --filter=@digitalgreenorg/farmerchat-react-native...",
+    "build:web": "turbo run build --filter=@digitalgreenorg/farmerchat-web..."
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.28.0",
+    "eslint": "^9.28.0",
+    "turbo": "^2.8.20",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.34.0"
+  }
+}

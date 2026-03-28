@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- FarmerChat SDK theme extending Material3 -->
+    <style name="Theme.FarmerChat" parent="Theme.MaterialComponents.Light.NoActionBar">
+        <!-- Primary brand color -->
+        <item name="colorPrimary">@color/fc_primary</item>
+        <item name="colorPrimaryDark">@color/fc_primary_dark</item>
+        <item name="colorPrimaryVariant">@color/fc_primary_light</item>
+        <item name="colorOnPrimary">@color/fc_on_primary</item>
+
+        <!-- Secondary color -->
+        <item name="colorSecondary">@color/fc_secondary</item>
+        <item name="colorOnSecondary">@color/fc_on_secondary</item>
+
+        <!-- Background -->
+        <item name="android:colorBackground">@color/fc_background</item>
+        <item name="colorSurface">@color/fc_surface</item>
+
+        <!-- Error color -->
+        <item name="colorError">@color/fc_error</item>
+
+        <!-- Transparent status bar and nav bar for overlay feel -->
+        <item name="android:windowBackground">@color/fc_background</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
+
+    <!-- Transparent theme variant for when Activity overlays host app -->
+    <style name="Theme.FarmerChat.Transparent" parent="Theme.FarmerChat">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+    </style>
+
+</resources>

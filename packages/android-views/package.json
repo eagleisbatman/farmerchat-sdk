@@ -1,0 +1,11 @@
+{
+  "name": "@digitalgreenorg/farmerchat-android-views",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "./gradlew build",
+    "test": "./gradlew test",
+    "lint": "./gradlew lint",
+    "clean": "./gradlew clean"
+  }
+}
