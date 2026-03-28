@@ -1,5 +1,5 @@
 import type { FarmerChatConfig } from '../types/config';
-import type { Query, Response, FeedbackPayload, Conversation, StarterQuestion, Language, OnboardingPayload } from '../types/messages';
+import type { Query, FeedbackPayload, Conversation, StarterQuestion, Language, OnboardingPayload } from '../types/messages';
 import { FarmerChatError } from '../types/errors';
 import { ErrorCodes } from '../constants/error-codes';
 import { DEFAULTS } from '../constants/defaults';

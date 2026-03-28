@@ -23,7 +23,6 @@ import type {
   TaskItemNode,
   TableNode,
   TableRowNode,
-  TableCellNode,
   TableAlignment,
   ImageNode,
   HorizontalRuleNode,

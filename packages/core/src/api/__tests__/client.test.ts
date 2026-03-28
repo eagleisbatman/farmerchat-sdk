@@ -165,9 +165,7 @@ describe('FarmerChatApiClient', () => {
       const client = new FarmerChatApiClient(TEST_CONFIG, localFetch);
 
       // Start consuming the stream — collect events to drive the generator
-      const events = await collectEvents(client.sendQuery(TEST_QUERY));
-      // After consuming, activeController should be null (cleared in finally)
-      // But during the stream, stopStream() works, so let's test mid-stream:
+      await collectEvents(client.sendQuery(TEST_QUERY));
 
       // Verify the signal was passed to fetch
       expect(capturedSignal).toBeDefined();

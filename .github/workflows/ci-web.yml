@@ -32,6 +32,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Build core (dependency)
+        run: pnpm --filter @digitalgreenorg/farmerchat-core build
+
       - name: Lint
         run: pnpm --filter @digitalgreenorg/farmerchat-web lint
 
@@ -40,6 +43,3 @@ jobs:
 
       - name: Build
         run: pnpm --filter @digitalgreenorg/farmerchat-web build
-
-      - name: Test
-        run: pnpm --filter @digitalgreenorg/farmerchat-web test

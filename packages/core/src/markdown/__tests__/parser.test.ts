@@ -6,7 +6,6 @@ import type {
   BulletListNode,
   OrderedListNode,
   TaskListNode,
-  HorizontalRuleNode,
   ImageNode,
   TableNode,
   TextNode,
@@ -14,7 +13,6 @@ import type {
   ItalicNode,
   StrikethroughNode,
   LinkNode,
-  LineBreakNode,
   InlineNode,
 } from '../types';
 
