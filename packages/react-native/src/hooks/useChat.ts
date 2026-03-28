@@ -57,17 +57,16 @@ export interface UseChatReturn {
 // ---------------------------------------------------------------------------
 
 function generateId(): string {
-  try {
-    // crypto.randomUUID is available in modern RN (Hermes) environments
-    return crypto.randomUUID();
-  } catch {
-    // Fallback for environments without crypto.randomUUID
-    return (
-      Math.random().toString(36).slice(2) +
-      Date.now().toString(36) +
-      Math.random().toString(36).slice(2)
-    );
+  // Use globalThis.crypto when available (modern Hermes), otherwise fallback
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (g.crypto?.randomUUID) {
+    return g.crypto.randomUUID();
   }
+  return (
+    Math.random().toString(36).slice(2) +
+    Date.now().toString(36) +
+    Math.random().toString(36).slice(2)
+  );
 }
 
 // ---------------------------------------------------------------------------

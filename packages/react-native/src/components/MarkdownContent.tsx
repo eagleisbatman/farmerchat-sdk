@@ -286,7 +286,7 @@ function InlineNodeRenderer({ node }: { node: InlineNode }) {
         const isSafeUrl = /^https?:\/\//i.test(node.url);
         return (
           <Text
-            style={isSafeUrl ? styles.link : styles.text}
+            style={isSafeUrl ? styles.link : styles.paragraph}
             onPress={isSafeUrl ? () => {
               try {
                 Linking.openURL(node.url);
