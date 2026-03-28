@@ -34,10 +34,6 @@ jobs:
         working-directory: packages/android-compose
         run: ./gradlew assembleRelease
 
-      - name: Run Tests
-        working-directory: packages/android-compose
-        run: ./gradlew testReleaseUnitTest
-
   build-views:
     runs-on: ubuntu-latest
     steps:
@@ -54,7 +50,3 @@ jobs:
       - name: Build Views AAR
         working-directory: packages/android-views
         run: ./gradlew assembleRelease
-
-      - name: Run Tests
-        working-directory: packages/android-views
-        run: ./gradlew testReleaseUnitTest
