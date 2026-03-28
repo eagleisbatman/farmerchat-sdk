@@ -14,7 +14,7 @@ import { useConnectivity } from '../hooks/useConnectivity';
 import { InputBar } from '../components/InputBar';
 import { ResponseCard } from '../components/ResponseCard';
 import { ConnectivityBanner } from '../components/ConnectivityBanner';
-import type { Message, StarterQuestion, MarkdownDocument } from '@digitalgreenorg/farmerchat-core';
+import type { Message, StarterQuestion } from '@digitalgreenorg/farmerchat-core';
 
 // ---------------------------------------------------------------------------
 // Sub-components
@@ -163,7 +163,7 @@ export function ChatScreen() {
     streamingMarkdown,
     sendQuery,
     sendFollowUp,
-    stopStream,
+    stopStream: _stopStream,
     retryLastQuery,
     submitFeedback,
     loadStarters,

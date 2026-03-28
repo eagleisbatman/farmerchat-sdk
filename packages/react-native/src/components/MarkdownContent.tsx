@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, ScrollView, Pressable, Linking, StyleSheet } from 'react-native';
+import { View, Text, Image, ScrollView, Linking, StyleSheet } from 'react-native';
 import type {
   MarkdownDocument,
   BlockNode,

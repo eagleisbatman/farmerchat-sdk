@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { FarmerChatApiClient, type SSEEvent } from '@digitalgreenorg/farmerchat-core';
+import { FarmerChatApiClient } from '@digitalgreenorg/farmerchat-core';
 import type {
   Message,
   Query,
@@ -15,7 +15,7 @@ import {
   StreamingMarkdownParser,
   type MarkdownDocument,
 } from '@digitalgreenorg/farmerchat-core';
-import type { FarmerChatConfig, SDKEvent } from '@digitalgreenorg/farmerchat-core';
+import type { SDKEvent } from '@digitalgreenorg/farmerchat-core';
 import { useFarmerChatConfig } from '../FarmerChat';
 
 // ---------------------------------------------------------------------------
