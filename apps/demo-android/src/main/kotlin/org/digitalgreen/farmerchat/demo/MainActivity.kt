@@ -74,7 +74,9 @@ class MainActivity : ComponentActivity() {
         try {
             org.digitalgreen.farmerchat.compose.FarmerChat.initialize(
                 context = applicationContext,
-                apiKey = DEMO_API_KEY,
+                config = org.digitalgreen.farmerchat.compose.FarmerChatConfig(
+                    sdkApiKey = DEMO_API_KEY,
+                ),
             )
             Log.d(TAG, "Compose SDK initialized")
         } catch (e: Exception) {
