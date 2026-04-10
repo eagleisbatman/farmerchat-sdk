@@ -256,9 +256,9 @@
 
   <!-- ══ SUMMARY BAR ═════════════════════════════════════════ -->
   <div class="summary">
-    <div class="stat"><div class="stat-num">4</div><div class="stat-label">Issues Fixed</div></div>
-    <div class="stat"><div class="stat-num">1</div><div class="stat-label">File Created</div></div>
-    <div class="stat"><div class="stat-num">3</div><div class="stat-label">Files Modified</div></div>
+    <div class="stat"><div class="stat-num">5</div><div class="stat-label">Issues Fixed</div></div>
+    <div class="stat"><div class="stat-num">2</div><div class="stat-label">Files Created</div></div>
+    <div class="stat"><div class="stat-num">4</div><div class="stat-label">Files Modified</div></div>
     <div class="stat"><div class="stat-num" style="font-size:.95rem;color:#16a34a;margin-top:4px;">Ready</div><div class="stat-label">Status</div></div>
   </div>
 
@@ -514,6 +514,100 @@ pnpm start -- --clear</pre>
       </div>
     </div>
 
+    <!-- ── Issue 5 ── -->
+    <div class="issue">
+      <div class="issue-header">
+        <div class="badge badge-red">#5</div>
+        <div>
+          <div class="issue-title">SplashModule crash persists — New Architecture + pnpm transitive version conflict</div>
+          <div class="issue-where">apps/demo-rn/app.json · package.json (root) · Expo Go on iOS Simulator</div>
+        </div>
+      </div>
+      <div class="issue-body">
+
+        <div class="label">Error (still occurring after Issue #4 fix)</div>
+        <pre>ERROR [Error: Uncaught (in promise, id: 0):
+  "TypeError: SplashModule.internalPreventAutoHideAsync is not a function (it is undefined)"]
+
+ERROR [Error: Uncaught (in promise, id: 1):
+  "TypeError: SplashModule.internalMaybeHideAsync is not a function (it is undefined)"]</pre>
+
+        <div class="label">Root Cause — Two compounding problems</div>
+        <div class="desc">
+          <ol style="margin: 6px 0 0 18px;">
+            <li style="margin-bottom:10px;">
+              <strong>New Architecture enabled for Expo Go.</strong>
+              <code>newArchEnabled: true</code> in <code>app.json</code> activates React Native's New Architecture
+              (Fabric renderer + JSI). Expo Go has <em>incomplete</em> New Architecture native module support —
+              specifically, the native <code>SplashModule</code> in Expo Go does not expose
+              <code>internalPreventAutoHideAsync</code> / <code>internalMaybeHideAsync</code> under the New Arch
+              bridge, even when Expo Go is SDK 55. These functions only work correctly in a
+              <strong>full development build</strong> (<code>expo run:ios</code>) where the native modules are
+              compiled from source with New Arch support.
+            </li>
+            <li>
+              <strong>pnpm transitive version conflict.</strong>
+              Even with <code>expo-splash-screen: ~55.0.0</code> in <code>apps/demo-rn/package.json</code>,
+              other packages in the monorepo (e.g. <code>packages/react-native</code>) may pull in a different
+              version as a transitive dependency. pnpm resolves these independently, so Metro can end up bundling
+              JS from one version while the native module comes from another.
+            </li>
+          </ol>
+        </div>
+
+        <div class="label">Fix 1 — Set <code>newArchEnabled: false</code> in app.json</div>
+        <div class="desc">
+          Disables New Architecture for Expo Go development. The app uses the stable Legacy Architecture
+          bridge where <code>SplashModule</code> fully exposes its native API. Enable this again only after
+          switching to a full development build (<code>expo run:ios / expo run:android</code>).
+        </div>
+        <pre><span class="cmt">// apps/demo-rn/app.json</span>
+{
+  "expo": {
+    <span class="key">"newArchEnabled"</span>: <span class="kw">false</span>,  <span class="cmt">← was true; use false for Expo Go, true for dev build</span>
+    ...
+  }
+}</pre>
+
+        <div class="label">Fix 2 — Add pnpm overrides to root package.json</div>
+        <div class="desc">
+          Forces every package in the entire monorepo dependency tree to resolve to the same Expo 55
+          versions. This eliminates transitive conflicts regardless of which sub-package introduces them.
+        </div>
+        <pre><span class="cmt">// package.json (monorepo root)</span>
+{
+  <span class="key">"pnpm"</span>: {
+    <span class="key">"overrides"</span>: {
+      <span class="key">"expo-splash-screen"</span>: <span class="str">"~55.0.0"</span>,  <span class="cmt">← forced everywhere</span>
+      <span class="key">"expo-constants"</span>:    <span class="str">"~55.0.0"</span>,
+      <span class="key">"expo-linking"</span>:      <span class="str">"~55.0.0"</span>,
+      <span class="key">"expo-status-bar"</span>:   <span class="str">"~55.0.0"</span>
+    }
+  }
+}</pre>
+
+        <div class="label">Commands to apply the fix</div>
+        <pre><span class="cmt"># From monorepo root — reinstall to apply overrides</span>
+pnpm install
+
+<span class="cmt"># Start with cleared Metro cache</span>
+cd apps/demo-rn
+pnpm start -- --clear</pre>
+
+        <div class="alert alert-info" style="margin-top:12px; font-size:.84rem;">
+          <div class="alert-icon">ℹ️</div>
+          <div>
+            <strong>New Architecture &amp; Expo Go:</strong> <code>newArchEnabled: false</code> is the correct
+            setting for development with Expo Go. When you are ready for a production build or a full
+            development client (<code>expo run:ios</code>), you can re-enable it by setting
+            <code>newArchEnabled: true</code>. React Native 0.83+ fully supports New Architecture in
+            development builds — Expo Go's limitation is specific to its bundled native shell.
+          </div>
+        </div>
+
+      </div>
+    </div>
+
     <!-- ── Files Changed ── -->
     <div class="section-title">Files Changed</div>
     <div style="border: 1px solid #e4e7ed; border-radius: 10px; overflow: hidden;">
@@ -537,7 +631,7 @@ pnpm start -- --clear</pre>
             <td class="file-path">apps/demo-rn/app.json</td>
             <td><span class="tag tag-mod">Modified</span></td>
             <td>#3</td>
-            <td>newArchEnabled, iOS/Android permissions, expo-location plugin</td>
+            <td>newArchEnabled: false (Expo Go compat), iOS/Android permissions, expo-location plugin</td>
           </tr>
           <tr>
             <td class="file-path">apps/demo-rn/package.json</td>
@@ -550,6 +644,12 @@ pnpm start -- --clear</pre>
             <td><span class="tag tag-mod">Modified</span></td>
             <td>#1</td>
             <td>Added "source": "./src/index.ts" for Metro dev resolution</td>
+          </tr>
+          <tr>
+            <td class="file-path">package.json (monorepo root)</td>
+            <td><span class="tag tag-mod">Modified</span></td>
+            <td>#5</td>
+            <td>Added pnpm.overrides to force consistent Expo 55 package versions across entire dependency tree</td>
           </tr>
         </tbody>
       </table>

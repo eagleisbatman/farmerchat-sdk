@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "scheme": "farmerchat-demo",
     "platforms": ["ios", "android"],
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "ios": {
       "bundleIdentifier": "org.digitalgreen.farmerchat.demo",
       "supportsTablet": true,
