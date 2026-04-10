@@ -256,7 +256,7 @@
 
   <!-- ══ SUMMARY BAR ═════════════════════════════════════════ -->
   <div class="summary">
-    <div class="stat"><div class="stat-num">3</div><div class="stat-label">Issues Fixed</div></div>
+    <div class="stat"><div class="stat-num">4</div><div class="stat-label">Issues Fixed</div></div>
     <div class="stat"><div class="stat-num">1</div><div class="stat-label">File Created</div></div>
     <div class="stat"><div class="stat-num">3</div><div class="stat-label">Files Modified</div></div>
     <div class="stat"><div class="stat-num" style="font-size:.95rem;color:#16a34a;margin-top:4px;">Ready</div><div class="stat-label">Status</div></div>
@@ -439,6 +439,81 @@ module.exports = config;</pre>
       </div>
     </div>
 
+    <!-- ── Issue 4 ── -->
+    <div class="issue">
+      <div class="issue-header">
+        <div class="badge badge-red">#4</div>
+        <div>
+          <div class="issue-title">SplashModule crash — expo-splash-screen, expo-constants &amp; expo-linking missing from dependencies</div>
+          <div class="issue-where">apps/demo-rn/package.json · Runtime (iOS Simulator)</div>
+        </div>
+      </div>
+      <div class="issue-body">
+
+        <div class="label">Errors</div>
+        <pre>Error [ERR_STREAM_UNABLE_TO_PIPE]: Cannot pipe to a closed or destroyed stream
+
+ ERROR  [Error: Uncaught (in promise, id: 0):
+   "TypeError: SplashModule.internalPreventAutoHideAsync is not a function (it is undefined)"]
+
+ ERROR  [Error: Uncaught (in promise, id: 1):
+   "TypeError: SplashModule.internalMaybeHideAsync is not a function (it is undefined)"]</pre>
+
+        <div class="label">Root Cause</div>
+        <div class="desc">
+          <strong>Expo SDK 55 changed its package versioning scheme</strong> — all first-party Expo
+          packages now use the SDK major version number (<code>~55.x.x</code> instead of the old
+          independent version numbers like <code>~0.29.x</code>). Three packages required by
+          <code>expo-router</code> were not declared in <code>package.json</code>:
+          <ul>
+            <li><strong><code>expo-splash-screen</code></strong> — manages the native splash screen that
+            hides after the app JS finishes loading. When absent, pnpm resolves an incompatible transitive
+            version whose native module (<code>SplashModule</code>) exports different function names than
+            the JS wrapper expects, causing both errors above.</li>
+            <li><strong><code>expo-constants</code></strong> — provides <code>app.json</code> values at
+            runtime. Required by <code>expo-router</code> for app config access.</li>
+            <li><strong><code>expo-linking</code></strong> — deep linking API. Required by
+            <code>expo-router</code> for URL-based navigation.</li>
+          </ul>
+          The <code>ERR_STREAM_UNABLE_TO_PIPE</code> error is a cascade — Metro's dev server pipe
+          breaks when the native runtime crashes on startup.
+        </div>
+
+        <div class="label">Fix — Added all missing Expo 55 packages to package.json</div>
+        <pre><span class="cmt">// apps/demo-rn/package.json — dependencies (before → after)</span>
+
+<span class="cmt">Before:</span>
+<span class="key">"expo"</span>: <span class="str">"~55.0.0"</span>,
+<span class="key">"expo-location"</span>: <span class="str">"~18.1.0"</span>,      <span class="cmt">← wrong version format for SDK 55</span>
+<span class="key">"expo-router"</span>: <span class="str">"~5.0.0"</span>,
+<span class="key">"expo-status-bar"</span>: <span class="str">"~3.0.0"</span>,   <span class="cmt">← wrong version format for SDK 55</span>
+<span class="cmt">// expo-splash-screen missing ← CRASH</span>
+<span class="cmt">// expo-constants missing</span>
+<span class="cmt">// expo-linking missing</span>
+
+<span class="cmt">After:</span>
+<span class="key">"expo"</span>: <span class="str">"~55.0.0"</span>,
+<span class="key">"expo-constants"</span>:    <span class="str">"~55.0.0"</span>,  <span class="cmt">← added (SDK 55 versioning)</span>
+<span class="key">"expo-linking"</span>:      <span class="str">"~55.0.0"</span>,  <span class="cmt">← added (SDK 55 versioning)</span>
+<span class="key">"expo-location"</span>:     <span class="str">"~55.0.0"</span>,  <span class="cmt">← corrected to SDK 55 versioning</span>
+<span class="key">"expo-router"</span>: <span class="str">"~5.0.0"</span>,
+<span class="key">"expo-splash-screen"</span>: <span class="str">"~55.0.0"</span>, <span class="cmt">← added — fixes the crash ✓</span>
+<span class="key">"expo-status-bar"</span>:   <span class="str">"~55.0.0"</span>,  <span class="cmt">← corrected to SDK 55 versioning</span></pre>
+
+        <div class="label">After applying the fix</div>
+        <div class="desc">
+          Run these commands to reinstall and restart with a clean cache:
+        </div>
+        <pre><span class="cmt"># From the monorepo root</span>
+pnpm install
+
+<span class="cmt"># Then start with Metro cache cleared</span>
+cd apps/demo-rn
+pnpm start -- --clear</pre>
+
+      </div>
+    </div>
+
     <!-- ── Files Changed ── -->
     <div class="section-title">Files Changed</div>
     <div style="border: 1px solid #e4e7ed; border-radius: 10px; overflow: hidden;">
@@ -467,8 +542,8 @@ module.exports = config;</pre>
           <tr>
             <td class="file-path">apps/demo-rn/package.json</td>
             <td><span class="tag tag-mod">Modified</span></td>
-            <td>#3</td>
-            <td>Added expo-location ~18.1.0 dependency</td>
+            <td>#3, #4</td>
+            <td>Added expo-splash-screen, expo-constants, expo-linking ~55.0.0; fixed expo-location &amp; expo-status-bar to SDK 55 versioning</td>
           </tr>
           <tr>
             <td class="file-path">packages/react-native/package.json</td>
