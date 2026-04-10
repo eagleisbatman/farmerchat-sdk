@@ -12,6 +12,7 @@ import org.digitalgreen.farmerchat.compose.network.ApiClient
 import org.digitalgreen.farmerchat.compose.network.ConnectivityMonitor
 import org.digitalgreen.farmerchat.compose.network.DeviceInfoProvider
 import org.digitalgreen.farmerchat.compose.network.GuestApiClient
+import org.digitalgreen.farmerchat.compose.network.SdkPreferences
 import org.digitalgreen.farmerchat.compose.network.TokenStore
 
 /**
@@ -67,6 +68,7 @@ object FarmerChat {
                 val appCtx = context.applicationContext
                 this.appContext = appCtx
                 this.config = config
+                SdkPreferences.init(appCtx)
                 this.sessionId = java.util.UUID.randomUUID().toString()
 
                 // Stable device ID (used in Device-Info header and guest init)

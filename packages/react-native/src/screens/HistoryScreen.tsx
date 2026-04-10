@@ -8,7 +8,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
-import { useChat } from '../hooks/useChat';
+import { useChatContext as useChat } from '../ChatProvider';
 import { useFarmerChatConfig } from '../FarmerChat';
 import type { ConversationListItem } from '../models/responses';
 

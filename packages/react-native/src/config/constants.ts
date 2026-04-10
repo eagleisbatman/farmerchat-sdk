@@ -11,6 +11,7 @@ export const API_SYNTHESISE_AUDIO    = 'api/chat/synthesise_audio/';
 export const API_TRANSCRIBE_AUDIO    = 'api/chat/transcribe_audio/';
 export const API_CHAT_HISTORY        = 'api/chat/conversation_chat_history/';
 export const API_CONVERSATION_LIST   = 'api/chat/conversation_list/';
+export const API_SUPPORTED_LANGUAGES = 'api/language/v2/country_wise_supported_languages/';
 
 export const GUEST_API_KEY  = 'REMOVED';
 export const BUILD_VERSION  = 'v2';

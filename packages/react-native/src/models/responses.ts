@@ -128,3 +128,16 @@ export interface ConversationListItem {
 }
 
 export type ConversationListResponse = ConversationListItem[];
+
+export interface SupportedLanguage {
+  id: number;
+  name: string;
+  code: string;
+  display_name: string;
+}
+
+export interface SupportedLanguageGroup {
+  country_name?: string;
+  country_code?: string;
+  languages: SupportedLanguage[];
+}

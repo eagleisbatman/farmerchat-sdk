@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const KEYS = {
-  ACCESS_TOKEN:  '@fc_access_token',
-  REFRESH_TOKEN: '@fc_refresh_token',
-  USER_ID:       '@fc_user_id',
-  DEVICE_ID:     '@fc_device_id',
+  ACCESS_TOKEN:      '@fc_access_token',
+  REFRESH_TOKEN:     '@fc_refresh_token',
+  USER_ID:           '@fc_user_id',
+  DEVICE_ID:         '@fc_device_id',
+  ONBOARDING_DONE:   '@fc_onboarding_done',
+  SELECTED_LANGUAGE: '@fc_selected_language',
 } as const;
 
 /**
@@ -60,6 +62,25 @@ export const TokenStorage = {
 
   async clearTokens(): Promise<void> {
     await AsyncStorage.multiRemove([KEYS.ACCESS_TOKEN, KEYS.REFRESH_TOKEN, KEYS.USER_ID]);
+  },
+
+  // ── Onboarding / language prefs ──────────────────────────────────────────
+
+  async isOnboardingDone(): Promise<boolean> {
+    const val = await AsyncStorage.getItem(KEYS.ONBOARDING_DONE);
+    return val === 'true';
+  },
+
+  async setOnboardingDone(): Promise<void> {
+    await AsyncStorage.setItem(KEYS.ONBOARDING_DONE, 'true');
+  },
+
+  async getSelectedLanguage(): Promise<string> {
+    return (await AsyncStorage.getItem(KEYS.SELECTED_LANGUAGE)) ?? '';
+  },
+
+  async setSelectedLanguage(code: string): Promise<void> {
+    await AsyncStorage.setItem(KEYS.SELECTED_LANGUAGE, code);
   },
 };
 

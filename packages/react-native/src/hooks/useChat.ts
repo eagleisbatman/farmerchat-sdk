@@ -7,6 +7,7 @@ import { GuestApiClient } from '../network/GuestApiClient';
 import type {
   ConversationListItem,
   ConversationChatHistoryMessageItem,
+  SupportedLanguageGroup,
 } from '../models/responses';
 import type { TriggeredInputType } from '../models/requests';
 
@@ -44,6 +45,7 @@ export interface UseChatReturn {
   isConnected: boolean;
   selectedLanguage: string;
   conversationList: ConversationListItem[];
+  availableLanguageGroups: SupportedLanguageGroup[];
   errorMessage: string | null;
 
   // Actions
@@ -53,6 +55,7 @@ export interface UseChatReturn {
   startNewConversation: () => void;
   loadConversationList: () => Promise<void>;
   loadConversation: (item: ConversationListItem) => Promise<void>;
+  loadLanguages: () => Promise<void>;
   synthesiseAudio: (serverMessageId: string, text: string) => Promise<string | null>;
   transcribeAudio: (base64Audio: string, format?: string) => Promise<string | null>;
   setLanguage: (code: string) => void;
@@ -101,17 +104,33 @@ export function useChat(): UseChatReturn {
   const [isConnected, setIsConnected] = useState(true);
   const [selectedLanguage, setSelectedLanguage] = useState('en');
   const [conversationList, setConversationList] = useState<ConversationListItem[]>([]);
+  const [availableLanguageGroups, setAvailableLanguageGroups] = useState<SupportedLanguageGroup[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // --- Init API client ---
+  // --- Init API client + determine initial screen ---
   useEffect(() => {
     if (!FarmerChatSDK.isConfigured()) {
       FarmerChatSDK.configure(config);
     }
     apiClientRef.current = new ChatApiClient(FarmerChatSDK.getConfig());
 
-    // Ensure guest tokens on mount
     void FarmerChatSDK.ensureTokens().catch(() => {});
+
+    // Restore persisted language preference
+    void TokenStorage.getSelectedLanguage().then(saved => {
+      if (saved) setSelectedLanguage(saved);
+    });
+
+    // Determine starting screen
+    if (config.defaultLanguage) {
+      // Host app configured a language — skip onboarding
+      setSelectedLanguage(config.defaultLanguage);
+      setCurrentScreen('chat');
+    } else {
+      void TokenStorage.isOnboardingDone().then(done => {
+        setCurrentScreen(done ? 'chat' : 'onboarding');
+      });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -353,10 +372,27 @@ export function useChat(): UseChatReturn {
 
   const setLanguage = useCallback((code: string) => {
     setSelectedLanguage(code);
+    void TokenStorage.setSelectedLanguage(code).catch(() => {});
   }, []);
 
   const navigateTo = useCallback((screen: Screen) => {
-    setCurrentScreen(screen);
+    setCurrentScreen(prev => {
+      if (prev === 'onboarding' && screen === 'chat') {
+        void TokenStorage.setOnboardingDone().catch(() => {});
+      }
+      return screen;
+    });
+  }, []);
+
+  const loadLanguages = useCallback(async () => {
+    const client = apiClientRef.current;
+    if (!client) return;
+    try {
+      const groups = await client.getSupportedLanguages();
+      setAvailableLanguageGroups(groups);
+    } catch {
+      // Non-fatal — language list will remain empty; OnboardingScreen handles this gracefully
+    }
   }, []);
 
   return {
@@ -366,6 +402,7 @@ export function useChat(): UseChatReturn {
     isConnected,
     selectedLanguage,
     conversationList,
+    availableLanguageGroups,
     errorMessage,
     sendQuery,
     sendFollowUp,
@@ -373,6 +410,7 @@ export function useChat(): UseChatReturn {
     startNewConversation,
     loadConversationList,
     loadConversation,
+    loadLanguages,
     synthesiseAudio,
     transcribeAudio,
     setLanguage,
