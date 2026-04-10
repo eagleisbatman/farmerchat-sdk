@@ -7,6 +7,8 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
+  Animated,
+  Easing,
 } from 'react-native';
 import { useChat } from '../hooks/useChat';
 import { useFarmerChatConfig } from '../FarmerChat';
@@ -14,444 +16,309 @@ import { useConnectivity } from '../hooks/useConnectivity';
 import { InputBar } from '../components/InputBar';
 import { ResponseCard } from '../components/ResponseCard';
 import { ConnectivityBanner } from '../components/ConnectivityBanner';
-import type { Message, StarterQuestion } from '@digitalgreenorg/farmerchat-core';
+import type { ChatMessage } from '../hooks/useChat';
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+// ── Colors ────────────────────────────────────────────────────────────────────
+const PRIMARY_GREEN = '#2E7D32';
+const LIGHT_GREEN   = '#4CAF50';
+const WHITE         = '#FFFFFF';
+const SURFACE_COLOR = '#F5F5F5';
+const TEXT_PRIMARY  = '#212121';
+const TEXT_SECONDARY = '#757575';
+
+// ── ChatTopBar ────────────────────────────────────────────────────────────────
 
 interface ChatTopBarProps {
   title: string;
   historyEnabled: boolean;
-  profileEnabled: boolean;
   onHistoryPress: () => void;
-  onProfilePress: () => void;
   primaryColor: string;
 }
 
-function ChatTopBar({
-  title,
-  historyEnabled,
-  profileEnabled,
-  onHistoryPress,
-  onProfilePress,
-  primaryColor,
-}: ChatTopBarProps) {
+function ChatTopBar({ title, historyEnabled, onHistoryPress, primaryColor }: ChatTopBarProps) {
   return (
-    <View style={[styles.topBar, { backgroundColor: primaryColor }]}>
-      <Text style={styles.topBarTitle} numberOfLines={1}>
-        {title}
-      </Text>
-      <View style={styles.topBarActions}>
-        {historyEnabled && (
-          <Pressable
-            style={styles.topBarButton}
-            onPress={onHistoryPress}
-            accessibilityLabel="Chat history"
-            accessibilityRole="button"
-          >
-            {/* Clock icon using unicode */}
-            <Text style={styles.topBarIcon}>{'\u{1F551}'}</Text>
-          </Pressable>
-        )}
-        {profileEnabled && (
-          <Pressable
-            style={styles.topBarButton}
-            onPress={onProfilePress}
-            accessibilityLabel="Profile"
-            accessibilityRole="button"
-          >
-            {/* Person icon using unicode */}
-            <Text style={styles.topBarIcon}>{'\u{1F464}'}</Text>
-          </Pressable>
-        )}
+    <View style={[styles.topBar, { backgroundColor: WHITE }]}>
+      {/* Logo circle 34px */}
+      <View style={[styles.logoCircle, { backgroundColor: primaryColor }]}>
+        <Text style={styles.logoEmoji}>🌱</Text>
       </View>
+
+      {/* Title */}
+      <Text style={styles.topBarTitle} numberOfLines={1}>{title}</Text>
+
+      <View style={{ flex: 1 }} />
+
+      {/* History icon */}
+      {historyEnabled && (
+        <Pressable
+          style={styles.topBarButton}
+          onPress={onHistoryPress}
+          accessibilityLabel="Chat history"
+          accessibilityRole="button"
+        >
+          <Text style={styles.topBarIcon}>🕐</Text>
+        </Pressable>
+      )}
     </View>
   );
 }
 
-interface StarterQuestionsAreaProps {
-  questions: StarterQuestion[];
-  onSelect: (text: string) => void;
-  primaryColor: string;
-  secondaryColor: string;
+// ── Empty state ───────────────────────────────────────────────────────────────
+
+function EmptyState({ primaryColor }: { primaryColor: string }) {
+  return (
+    <View style={styles.emptyState}>
+      <Text style={styles.emptyEmoji}>🌾</Text>
+      <Text style={[styles.emptyTitle, { color: TEXT_PRIMARY }]}>
+        Ask a question about farming to get started
+      </Text>
+    </View>
+  );
 }
 
-function StarterQuestionsArea({
-  questions,
-  onSelect,
-  primaryColor,
-  secondaryColor,
-}: StarterQuestionsAreaProps) {
+// ── Loading bubble (3 animated dots) ─────────────────────────────────────────
+
+function LoadingBubble() {
+  const dots = [useRef(new Animated.Value(0.4)).current, useRef(new Animated.Value(0.4)).current, useRef(new Animated.Value(0.4)).current];
+
+  useEffect(() => {
+    dots.forEach((dot, i) => {
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(i * 150),
+          Animated.timing(dot, { toValue: 1, duration: 300, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+          Animated.timing(dot, { toValue: 0.4, duration: 300, useNativeDriver: true, easing: Easing.inOut(Easing.ease) }),
+        ]),
+      ).start();
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <View style={styles.starterContainer}>
-      <Text style={styles.starterHeading}>How can I help you today?</Text>
-      <View style={styles.starterChips}>
-        {questions.map((q, index) => (
-          <Pressable
-            key={`${q.text}-${index}`}
-            style={[
-              styles.starterChip,
-              { backgroundColor: secondaryColor, borderColor: primaryColor },
-            ]}
-            onPress={() => onSelect(q.text)}
-            accessibilityRole="button"
-          >
-            <Text style={[styles.starterChipText, { color: primaryColor }]}>
-              {q.text}
-            </Text>
-          </Pressable>
+    <View style={styles.loadingRow}>
+      {/* Avatar */}
+      <View style={styles.avatar}>
+        <Text style={{ fontSize: 16 }}>🌱</Text>
+      </View>
+      {/* Dots bubble */}
+      <View style={styles.loadingBubble}>
+        {dots.map((dot, i) => (
+          <Animated.View
+            key={i}
+            style={[styles.dot, { transform: [{ scale: dot }] }]}
+          />
         ))}
       </View>
     </View>
   );
 }
 
-function StreamingIndicator() {
+// ── User bubble ───────────────────────────────────────────────────────────────
+
+interface UserBubbleProps { message: ChatMessage }
+
+const UserBubble = React.memo(function UserBubble({ message }: UserBubbleProps) {
   return (
-    <View style={styles.streamingRow}>
-      <View style={styles.streamingDots}>
-        <Text style={styles.streamingText}>...</Text>
-      </View>
-    </View>
-  );
-}
-
-interface ErrorBannerProps {
-  message: string;
-  onRetry: () => void;
-}
-
-function ErrorBanner({ message, onRetry }: ErrorBannerProps) {
-  return (
-    <View style={styles.errorBanner}>
-      <Text style={styles.errorText}>{message}</Text>
-      <Pressable style={styles.retryButton} onPress={onRetry} accessibilityRole="button">
-        <Text style={styles.retryButtonText}>Retry</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-interface UserBubbleProps {
-  message: Message;
-  primaryColor: string;
-}
-
-const UserBubble = React.memo(function UserBubble({ message, primaryColor }: UserBubbleProps) {
-  return (
-    <View style={styles.userBubbleRow}>
-      <View style={[styles.userBubble, { backgroundColor: primaryColor }]}>
+    <View style={styles.userBubbleWrapper}>
+      <View style={styles.userBubble}>
         <Text style={styles.userBubbleText}>{message.text}</Text>
       </View>
     </View>
   );
 });
 
-// ---------------------------------------------------------------------------
-// ChatScreen
-// ---------------------------------------------------------------------------
+// ── Error banner ──────────────────────────────────────────────────────────────
+
+function ErrorBanner({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <View style={styles.errorBanner}>
+      <View style={styles.errorLeft}>
+        <Text style={styles.errorEmoji}>⚠️</Text>
+        <Text style={styles.errorText}>{message}</Text>
+      </View>
+      <Pressable style={styles.retryBtn} onPress={onRetry} accessibilityRole="button">
+        <Text style={styles.retryBtnText}>Try again</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+// ── ChatScreen ────────────────────────────────────────────────────────────────
 
 export function ChatScreen() {
   const config = useFarmerChatConfig();
   const {
-    chatState,
-    messages,
-    starterQuestions,
-    isConnected,
-    errorMessage,
-    streamingMarkdown,
-    sendQuery,
-    sendFollowUp,
-    stopStream: _stopStream,
-    retryLastQuery,
-    submitFeedback,
-    loadStarters,
-    navigateTo,
-    setIsConnected,
+    chatState, messages, isConnected, errorMessage,
+    sendQuery, sendFollowUp, retryLastQuery, navigateTo, setIsConnected,
   } = useChat();
+  const { isConnected: netConnected } = useConnectivity();
+  const flatListRef = useRef<FlatList<ChatMessage>>(null);
 
-  const { isConnected: connectivityConnected } = useConnectivity();
-  const flatListRef = useRef<FlatList<Message>>(null);
+  const primaryColor = config.theme?.primaryColor ?? PRIMARY_GREEN;
 
-  const primaryColor = config.theme?.primaryColor ?? '#1B6B3A';
-  const secondaryColor = config.theme?.secondaryColor ?? '#F0F7F2';
-  const historyEnabled = config.historyEnabled !== false;
-  const profileEnabled = config.profileEnabled !== false;
-  const headerTitle = config.headerTitle ?? 'FarmerChat';
-
-  // Sync connectivity state from the hook into the chat state machine
   useEffect(() => {
-    try {
-      setIsConnected(connectivityConnected);
-    } catch {
-      // SDK must never crash the host app
-    }
-  }, [connectivityConnected, setIsConnected]);
+    try { setIsConnected(netConnected); } catch { /* no-op */ }
+  }, [netConnected, setIsConnected]);
 
-  // Load starter questions on mount
-  useEffect(() => {
-    try {
-      loadStarters();
-    } catch {
-      // Silently ignore — starters are non-critical
-    }
-  }, [loadStarters]);
-
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     if (messages.length > 0) {
-      try {
-        // Small delay to let layout settle after new message
-        const timer = setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true });
-        }, 100);
-        return () => clearTimeout(timer);
-      } catch {
-        // Scroll failure is non-critical
-      }
+      const t = setTimeout(() => {
+        try { flatListRef.current?.scrollToEnd({ animated: true }); } catch { /* no-op */ }
+      }, 100);
+      return () => clearTimeout(t);
     }
   }, [messages.length, chatState]);
 
-  const handleSendQuery = useCallback(
-    async (text: string, imageData?: string) => {
-      try {
-        await sendQuery(text, imageData);
-      } catch {
-        // Error state is managed by the hook
-      }
-    },
-    [sendQuery],
-  );
+  const handleSend = useCallback(async (text: string, imageData?: string) => {
+    try { await sendQuery(text, 'text', imageData); } catch { /* handled in hook */ }
+  }, [sendQuery]);
 
-  // Track last message ID in a ref to avoid closing over the messages array
-  const lastMessageIdRef = useRef<string | undefined>(undefined);
-  lastMessageIdRef.current = messages[messages.length - 1]?.id;
+  const lastIdRef = useRef<string | undefined>();
+  lastIdRef.current = messages[messages.length - 1]?.id;
 
-  const renderItem = useCallback(
-    ({ item }: { item: Message }) => {
-      try {
-        if (item.role === 'user') {
-          return <UserBubble message={item} primaryColor={primaryColor} />;
-        }
+  const renderItem = useCallback(({ item }: { item: ChatMessage }) => {
+    if (item.role === 'user') return <UserBubble message={item} />;
+    return (
+      <ResponseCard
+        message={item}
+        onFollowUp={(text, id) => { try { void sendFollowUp(text, id); } catch { /* no-op */ } }}
+      />
+    );
+  }, [sendFollowUp]);
 
-        const isLastMessage = item.id === lastMessageIdRef.current;
-        const isCurrentlyStreaming = chatState === 'streaming' && isLastMessage;
-
-        return (
-          <ResponseCard
-            message={item}
-            isStreaming={isCurrentlyStreaming}
-            streamingMarkdown={isCurrentlyStreaming ? streamingMarkdown : null}
-            onFollowUp={sendFollowUp}
-            onFeedback={submitFeedback}
-          />
-        );
-      } catch {
-        // Render fallback if component errors
-        return (
-          <View style={styles.fallbackMessage}>
-            <Text>{item.text}</Text>
-          </View>
-        );
-      }
-    },
-    [primaryColor, chatState, streamingMarkdown, sendFollowUp, submitFeedback],
-  );
-
-  const keyExtractor = useCallback((item: Message) => item.id, []);
-
-  const showStarters = messages.length === 0 && starterQuestions.length > 0;
+  const keyExtractor = useCallback((item: ChatMessage) => item.id, []);
 
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <ChatTopBar
-        title={headerTitle}
-        historyEnabled={historyEnabled}
-        profileEnabled={profileEnabled}
+        title={config.headerTitle ?? 'FarmerChat AI'}
+        historyEnabled={config.historyEnabled !== false}
         onHistoryPress={() => navigateTo('history')}
-        onProfilePress={() => navigateTo('profile')}
         primaryColor={primaryColor}
       />
 
       {!isConnected && <ConnectivityBanner isConnected={isConnected} />}
 
-      {chatState === 'error' && errorMessage && (
-        <ErrorBanner message={errorMessage} onRetry={retryLastQuery} />
-      )}
-
       <View style={styles.chatBody}>
-        {showStarters ? (
-          <StarterQuestionsArea
-            questions={starterQuestions}
-            onSelect={(text) => handleSendQuery(text)}
-            primaryColor={primaryColor}
-            secondaryColor={secondaryColor}
-          />
+        {messages.length === 0 ? (
+          <EmptyState primaryColor={primaryColor} />
         ) : (
-          <FlatList<Message>
+          <FlatList<ChatMessage>
             ref={flatListRef}
             data={messages}
             renderItem={renderItem}
             keyExtractor={keyExtractor}
-            extraData={chatState}
             contentContainerStyle={styles.messageList}
             showsVerticalScrollIndicator={false}
             initialNumToRender={15}
             maxToRenderPerBatch={10}
-            windowSize={10}
           />
         )}
 
-        {chatState === 'sending' && <StreamingIndicator />}
+        {chatState === 'sending' && <LoadingBubble />}
+
+        {chatState === 'error' && errorMessage && (
+          <ErrorBanner message={errorMessage} onRetry={retryLastQuery} />
+        )}
       </View>
 
       <InputBar
-        onSend={handleSendQuery}
-        isDisabled={!isConnected || chatState === 'streaming'}
+        onSend={handleSend}
+        isDisabled={!isConnected || chatState === 'sending'}
+        voiceEnabled={config.voiceInputEnabled ?? false}
+        imageEnabled={config.imageInputEnabled ?? false}
       />
     </KeyboardAvoidingView>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
+  container:      { flex: 1, backgroundColor: SURFACE_COLOR },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingTop: Platform.OS === 'ios' ? 48 : 12,
-  },
-  topBarTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    flex: 1,
-  },
-  topBarActions: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  topBarButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topBarIcon: {
-    fontSize: 18,
-  },
-  chatBody: {
-    flex: 1,
-  },
-  messageList: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  starterContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  starterHeading: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 24,
-    textAlign: 'center',
-  },
-  starterChips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
+    paddingTop: Platform.OS === 'ios' ? 52 : 12,
+    paddingBottom: 12,
+    backgroundColor: WHITE,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 2,
+    elevation: 2,
     gap: 10,
   },
-  starterChip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderWidth: 1,
+  logoCircle:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
+  logoEmoji:   { fontSize: 18 },
+  topBarTitle: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY, flexShrink: 1 },
+  topBarButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  topBarIcon:   { fontSize: 20 },
+  chatBody:    { flex: 1 },
+  messageList: { paddingHorizontal: 12, paddingVertical: 8 },
+  emptyState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+    gap: 16,
   },
-  starterChipText: {
-    fontSize: 14,
+  emptyEmoji:  { fontSize: 48 },
+  emptyTitle: {
+    fontSize: 16,
     fontWeight: '500',
+    color: TEXT_SECONDARY,
+    textAlign: 'center',
+    lineHeight: 24,
   },
-  userBubbleRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginVertical: 4,
+  // Loading
+  loadingRow:  { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 4, alignItems: 'flex-start' },
+  avatar: {
+    width: 32, height: 32, borderRadius: 16,
+    backgroundColor: '#C8E6C9',
+    alignItems: 'center', justifyContent: 'center', marginRight: 8, marginTop: 4,
+  },
+  loadingBubble: {
+    flexDirection: 'row', gap: 6, alignItems: 'center',
+    backgroundColor: '#F1F8E9',
+    borderRadius: 18, borderTopLeftRadius: 4,
+    paddingHorizontal: 14, paddingVertical: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+  },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: LIGHT_GREEN },
+  // User bubble
+  userBubbleWrapper: {
+    alignSelf: 'flex-end', maxWidth: '80%',
+    paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4,
   },
   userBubble: {
-    maxWidth: '78%',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderRadius: 12,
-    borderBottomRightRadius: 4,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: 18, borderBottomRightRadius: 4,
+    paddingHorizontal: 14, paddingVertical: 10,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
   },
-  userBubbleText: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    lineHeight: 20,
-  },
-  streamingRow: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  streamingDots: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignSelf: 'flex-start',
-  },
-  streamingText: {
-    fontSize: 20,
-    color: '#666666',
-    letterSpacing: 4,
-  },
+  userBubbleText: { color: WHITE, fontSize: 15, lineHeight: 22 },
+  // Error
   errorBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: '#FFEBEE', borderLeftWidth: 3, borderLeftColor: '#D32F2F',
+    borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12,
+    marginHorizontal: 12, marginVertical: 4,
   },
-  errorText: {
-    color: '#B91C1C',
-    fontSize: 13,
-    flex: 1,
-    marginRight: 12,
+  errorLeft:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 12 },
+  errorEmoji:  { fontSize: 14 },
+  errorText:   { flex: 1, fontSize: 14, color: '#D32F2F', lineHeight: 20 },
+  retryBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 16, backgroundColor: PRIMARY_GREEN,
   },
-  retryButton: {
-    backgroundColor: '#B91C1C',
-    paddingHorizontal: 14,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  fallbackMessage: {
-    padding: 12,
-    marginVertical: 4,
-  },
+  retryBtnText: { color: WHITE, fontSize: 13, fontWeight: '600' },
 });

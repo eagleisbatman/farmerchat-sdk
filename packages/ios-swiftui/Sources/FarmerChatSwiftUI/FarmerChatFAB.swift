@@ -1,56 +1,34 @@
 import SwiftUI
 
-/// Floating Action Button overlay for launching the FarmerChat widget.
+/// Floating Action Button that opens the FarmerChat widget.
 ///
-/// Place this in a `ZStack` or `.overlay` in your SwiftUI view hierarchy.
-/// The FAB wraps its action in do/catch so the SDK never crashes the host app.
-///
-/// ```swift
-/// ZStack(alignment: .bottomTrailing) {
-///     YourContentView()
-///     FarmerChatFAB {
-///         // Present the FarmerChat sheet
-///     }
-///     .padding()
-/// }
-/// ```
+/// Spec (from UI guide):
+///  - 56×56pt circle, bg #2E7D32 (PRIMARY_GREEN), shadow radius 4, y 2
+///  - Icon: message.fill
+///  - Opens .sheet with ChatContainerView, detent: .large, cornerRadius: 20
 public struct FarmerChatFAB: View {
+    @State private var isPresented = false
+    private let primaryColor = Color(red: 0.18, green: 0.49, blue: 0.20) // #2E7D32
 
-    /// Action invoked when the FAB is tapped.
-    let action: () -> Void
-
-    /// Primary brand color for the FAB background. Defaults to FarmerChat green.
-    var primaryColor: Color
-
-    /// Diameter of the FAB circle in points. Defaults to 56.
-    var size: CGFloat
-
-    /// Create a FarmerChat floating action button.
-    ///
-    /// - Parameters:
-    ///   - action: Closure invoked when the FAB is tapped.
-    ///   - primaryColor: Background color for the FAB circle.
-    ///   - size: Diameter of the FAB in points.
-    public init(
-        action: @escaping () -> Void = {},
-        primaryColor: Color = Color(red: 0.106, green: 0.420, blue: 0.227),
-        size: CGFloat = 56
-    ) {
-        self.action = action
-        self.primaryColor = primaryColor
-        self.size = size
-    }
+    public init() {}
 
     public var body: some View {
-        Button(action: action) {
+        Button {
+            isPresented = true
+        } label: {
             Image(systemName: "message.fill")
-                .font(.system(size: 24))
+                .font(.title2)
                 .foregroundColor(.white)
-                .frame(width: size, height: size)
+                .frame(width: 56, height: 56)
                 .background(primaryColor)
                 .clipShape(Circle())
-                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+                .shadow(color: Color.black.opacity(0.3), radius: 4, x: 0, y: 2)
         }
-        .accessibilityLabel("Open FarmerChat")
+        .padding(24)
+        .sheet(isPresented: $isPresented) {
+            FarmerChat.shared.chatView()
+                .presentationDetents([.large])
+                .presentationCornerRadius(20)
+        }
     }
 }

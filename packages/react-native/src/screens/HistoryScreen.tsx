@@ -1,105 +1,96 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
   Pressable,
-  FlatList,
+  SectionList,
   ActivityIndicator,
   StyleSheet,
   Platform,
 } from 'react-native';
 import { useChat } from '../hooks/useChat';
 import { useFarmerChatConfig } from '../FarmerChat';
-import type { Conversation } from '@digitalgreenorg/farmerchat-core';
+import type { ConversationListItem } from '../models/responses';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// ── Colors ────────────────────────────────────────────────────────────────────
+const PRIMARY_GREEN  = '#2E7D32';
+const WHITE          = '#FFFFFF';
+const SURFACE_COLOR  = '#F5F5F5';
+const TEXT_PRIMARY   = '#212121';
+const TEXT_SECONDARY = '#757575';
+const DIVIDER_COLOR  = '#E0E0E0';
+const ITEM_ICON_BG   = '#E8F5E9';
 
-function formatDate(timestamp: number): string {
-  try {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffMs = now.getTime() - date.getTime();
-    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+// ── Topic emoji ────────────────────────────────────────────────────────────────
 
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-    if (diffDays < 7) return `${diffDays} days ago`;
-
-    // Fallback to short date
-    return date.toLocaleDateString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
-    });
-  } catch {
-    return '';
-  }
+function topicEmoji(title?: string | null): string {
+  const t = (title ?? '').toLowerCase();
+  if (t.includes('tomato') || t.includes('vegetable')) return '🍅';
+  if (t.includes('weather') || t.includes('rain'))     return '🌧️';
+  if (t.includes('soil') || t.includes('npk'))         return '🌱';
+  if (t.includes('irrigation') || t.includes('water')) return '💧';
+  if (t.includes('fertilizer') || t.includes('nutrient')) return '🌻';
+  if (t.includes('pest') || t.includes('insect'))      return '🐛';
+  if (t.includes('wheat') || t.includes('rice') || t.includes('crop')) return '🌾';
+  if (t.includes('disease'))                            return '⚠️';
+  return '💬';
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
+// ── TopBar ────────────────────────────────────────────────────────────────────
 
-interface TopBarProps {
-  onBack: () => void;
-  primaryColor: string;
-}
-
-function TopBar({ onBack, primaryColor }: TopBarProps) {
+function TopBar({ onBack, primaryColor, onNewChat }: { onBack: () => void; primaryColor: string; onNewChat: () => void }) {
   return (
-    <View style={[styles.topBar, { backgroundColor: primaryColor }]}>
+    <View style={styles.topBar}>
+      <Pressable style={styles.backBtn} onPress={onBack} accessibilityLabel="Go back" accessibilityRole="button">
+        <Text style={[styles.backArrow, { color: primaryColor }]}>←</Text>
+      </Pressable>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.topBarTitle}>Chat History</Text>
+        <Text style={styles.topBarSub}>Your farming conversations</Text>
+      </View>
+      {/* + New conversation */}
       <Pressable
-        style={styles.backButton}
-        onPress={onBack}
-        accessibilityLabel="Go back"
+        style={[styles.addBtn, { backgroundColor: PRIMARY_GREEN }]}
+        onPress={onNewChat}
+        accessibilityLabel="New conversation"
         accessibilityRole="button"
       >
-        <Text style={styles.backArrow}>{'\u2190'}</Text>
+        <Text style={styles.addBtnText}>+</Text>
       </Pressable>
-      <Text style={styles.topBarTitle}>History</Text>
-      <View style={styles.topBarSpacer} />
     </View>
   );
 }
 
-interface ConversationCardProps {
-  conversation: Conversation;
-  primaryColor: string;
-}
+// ── Conversation item ─────────────────────────────────────────────────────────
 
-function ConversationCard({ conversation, primaryColor }: ConversationCardProps) {
+function ConversationItem({ item, onPress }: { item: ConversationListItem; onPress: () => void }) {
   return (
-    <Pressable
-      style={styles.conversationCard}
-      accessibilityRole="button"
-      // Tapping is a no-op for now (future: load that conversation)
-    >
-      <View style={[styles.conversationIndicator, { backgroundColor: primaryColor }]} />
-      <View style={styles.conversationContent}>
-        <Text style={styles.conversationTitle} numberOfLines={2}>
-          {conversation.title}
-        </Text>
-        <Text style={styles.conversationDate}>
-          {formatDate(conversation.updatedAt)}
-        </Text>
+    <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
+      {/* Icon circle 40px */}
+      <View style={styles.iconCircle}>
+        <Text style={{ fontSize: 18 }}>{topicEmoji(item.conversation_title)}</Text>
       </View>
+      {/* Content */}
+      <View style={styles.itemContent}>
+        <Text style={styles.itemTitle} numberOfLines={2}>{item.conversation_title ?? 'Conversation'}</Text>
+        <Text style={styles.itemDate}>{item.created_on ?? ''}</Text>
+      </View>
+      <Text style={styles.chevron}>›</Text>
     </Pressable>
   );
 }
 
-// ---------------------------------------------------------------------------
-// HistoryScreen
-// ---------------------------------------------------------------------------
+// ── HistoryScreen ─────────────────────────────────────────────────────────────
+
+interface Section { title: string; data: ConversationListItem[] }
 
 export function HistoryScreen() {
   const config = useFarmerChatConfig();
-  const { loadHistory, navigateTo } = useChat();
+  const { loadConversationList, loadConversation, navigateTo, startNewConversation, conversationList } = useChat();
+  const conversations = conversationList as ConversationListItem[];
 
-  const primaryColor = config.theme?.primaryColor ?? '#1B6B3A';
+  const primaryColor = config.theme?.primaryColor ?? PRIMARY_GREEN;
 
-  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -107,78 +98,82 @@ export function HistoryScreen() {
     try {
       setLoading(true);
       setError(null);
-      const result = await loadHistory();
-      setConversations(result);
+      await loadConversationList();
     } catch {
       setError('Failed to load history. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [loadHistory]);
+  }, [loadConversationList]);
 
-  useEffect(() => {
-    fetchHistory();
-  }, [fetchHistory]);
+  useEffect(() => { void fetchHistory(); }, [fetchHistory]);
 
   const handleBack = useCallback(() => {
-    try {
-      navigateTo('chat');
-    } catch {
-      // Navigation failure is non-critical
-    }
+    try { navigateTo('chat'); } catch { /* no-op */ }
   }, [navigateTo]);
 
-  const renderItem = useCallback(
-    ({ item }: { item: Conversation }) => (
-      <ConversationCard conversation={item} primaryColor={primaryColor} />
-    ),
-    [primaryColor],
-  );
+  const handleNewChat = useCallback(() => {
+    try { startNewConversation(); navigateTo('chat'); } catch { /* no-op */ }
+  }, [startNewConversation, navigateTo]);
 
-  const keyExtractor = useCallback((item: Conversation) => item.id, []);
+  const handleSelect = useCallback(async (item: ConversationListItem) => {
+    try { await loadConversation(item); navigateTo('chat'); } catch { /* no-op */ }
+  }, [loadConversation, navigateTo]);
 
-  // ---------------------------------------------------------------------------
-  // Content states
-  // ---------------------------------------------------------------------------
+  // Group conversations by their grouping label or derive from date
+  const sections: Section[] = useMemo(() => {
+    const grouped: Record<string, ConversationListItem[]> = {};
+    conversations.forEach(item => {
+      const key = item.grouping ?? 'Older';
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(item);
+    });
+    return Object.entries(grouped).map(([title, data]) => ({ title, data }));
+  }, [conversations]);
+
+  // ── States ─────────────────────────────────────────────────────────────────
 
   let content: React.ReactNode;
 
   if (loading) {
     content = (
-      <View style={styles.centerContainer}>
+      <View style={styles.center}>
         <ActivityIndicator color={primaryColor} size="large" />
       </View>
     );
   } else if (error) {
     content = (
-      <View style={styles.centerContainer}>
+      <View style={styles.center}>
+        <Text style={styles.emptyTitle}>⚠️</Text>
         <Text style={styles.errorText}>{error}</Text>
-        <Pressable
-          style={[styles.retryButton, { backgroundColor: primaryColor }]}
-          onPress={fetchHistory}
-          accessibilityRole="button"
-        >
-          <Text style={styles.retryButtonText}>Retry</Text>
+        <Pressable style={[styles.retryBtn, { backgroundColor: primaryColor }]} onPress={fetchHistory} accessibilityRole="button">
+          <Text style={styles.retryBtnText}>Try Again</Text>
         </Pressable>
       </View>
     );
   } else if (conversations.length === 0) {
     content = (
-      <View style={styles.centerContainer}>
-        <Text style={styles.emptyIcon}>{'\u{1F4AC}'}</Text>
-        <Text style={styles.emptyText}>No conversations yet</Text>
-        <Text style={styles.emptySubtext}>
-          Start chatting to see your history here
-        </Text>
+      <View style={styles.center}>
+        <View style={styles.emptyIconCircle}>
+          <Text style={styles.emptyEmoji}>💬</Text>
+        </View>
+        <Text style={styles.emptyTitle}>No conversations yet</Text>
+        <Text style={styles.emptySub}>Your past conversations will appear here</Text>
       </View>
     );
   } else {
     content = (
-      <FlatList<Conversation>
-        data={conversations}
-        renderItem={renderItem}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.listContent}
+      <SectionList<ConversationListItem, Section>
+        sections={sections}
+        keyExtractor={item => item.conversation_id}
+        renderSectionHeader={({ section }) => (
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionHeaderText}>{section.title.toUpperCase()}</Text>
+          </View>
+        )}
+        renderItem={({ item }) => (
+          <ConversationItem item={item} onPress={() => handleSelect(item)} />
+        )}
         showsVerticalScrollIndicator={false}
       />
     );
@@ -186,117 +181,71 @@ export function HistoryScreen() {
 
   return (
     <View style={styles.container}>
-      <TopBar onBack={handleBack} primaryColor={primaryColor} />
+      <TopBar onBack={handleBack} primaryColor={primaryColor} onNewChat={handleNewChat} />
       {content}
     </View>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
+// ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#FFFFFF',
-  },
+  container: { flex: 1, backgroundColor: SURFACE_COLOR },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingTop: Platform.OS === 'ios' ? 48 : 12,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  backArrow: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '600',
-  },
-  topBarTitle: {
-    flex: 1,
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  topBarSpacer: {
-    width: 36,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  errorText: {
-    fontSize: 14,
-    color: '#B91C1C',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  retryButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-    borderRadius: 12,
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: '#666666',
-    textAlign: 'center',
-  },
-  listContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  conversationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 12,
+    paddingTop: Platform.OS === 'ios' ? 52 : 12,
+    paddingBottom: 12,
+    backgroundColor: WHITE,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5E5',
+    borderBottomColor: DIVIDER_COLOR,
   },
-  conversationIndicator: {
-    width: 4,
-    height: 36,
-    borderRadius: 2,
-    marginRight: 12,
+  backBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  backArrow:    { fontSize: 22, fontWeight: '600' },
+  topBarTitle:  { fontSize: 18, fontWeight: '600', color: TEXT_PRIMARY },
+  topBarSub:    { fontSize: 12, color: TEXT_SECONDARY, marginTop: 1 },
+  addBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    alignItems: 'center', justifyContent: 'center',
   },
-  conversationContent: {
-    flex: 1,
+  addBtnText: { color: WHITE, fontSize: 22, lineHeight: 28 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 16 },
+  emptyIconCircle: {
+    width: 90, height: 90, borderRadius: 45,
+    backgroundColor: '#4CAF5019',
+    alignItems: 'center', justifyContent: 'center',
   },
-  conversationTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#333333',
-    marginBottom: 4,
+  emptyEmoji: { fontSize: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: '600', color: TEXT_PRIMARY, textAlign: 'center' },
+  emptySub:   { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 20 },
+  errorText:  { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 20 },
+  retryBtn:   { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
+  retryBtnText: { color: WHITE, fontWeight: '600', fontSize: 14 },
+  sectionHeader: {
+    backgroundColor: SURFACE_COLOR,
+    paddingHorizontal: 16, paddingVertical: 8,
   },
-  conversationDate: {
-    fontSize: 12,
-    color: '#999999',
+  sectionHeaderText: {
+    fontSize: 12, fontWeight: '600', color: TEXT_SECONDARY,
+    letterSpacing: 0.8,
   },
+  item: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingVertical: 14, paddingHorizontal: 16,
+    backgroundColor: WHITE,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: DIVIDER_COLOR,
+    gap: 12,
+  },
+  iconCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: ITEM_ICON_BG,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  itemContent: { flex: 1 },
+  itemTitle:   { fontSize: 14, fontWeight: '500', color: TEXT_PRIMARY, lineHeight: 20 },
+  itemDate:    { fontSize: 12, color: TEXT_SECONDARY, marginTop: 2 },
+  chevron:     { fontSize: 22, color: TEXT_SECONDARY, marginLeft: 8 },
 });

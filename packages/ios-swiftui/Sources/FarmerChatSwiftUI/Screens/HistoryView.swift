@@ -1,121 +1,166 @@
 import SwiftUI
 
-/// Chat history view — displays the user's past conversations.
+/// Chat history view — light system theme.
 ///
-/// Tapping a conversation loads its messages into the chat screen.
+/// Displays past conversations grouped (if the server returns a `grouping` field).
+/// Tapping a conversation loads it into the chat screen.
 struct HistoryView: View {
     @ObservedObject var viewModel: ChatViewModel
 
-    private var themeColor: Color {
-        colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
-    }
-
-    private var cornerRadius: Double {
-        FarmerChat.getConfig().theme?.cornerRadius ?? 12
+    private var primaryColor: Color {
+        colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32")
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Toolbar
+            // ── Toolbar ────────────────────────────────────────────────────────
             HStack(spacing: 12) {
                 Button {
                     viewModel.navigateTo(.chat)
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(.white)
+                        .foregroundColor(.primary)
                 }
                 .accessibilityLabel("Back to chat")
 
-                Text("Chat History")
-                    .font(.headline)
-                    .foregroundColor(.white)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Chat History")
+                        .font(.system(size: 17, weight: .semibold))
+                    Text("Your farming conversations")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
 
                 Spacer()
+
+                // New conversation
+                Button {
+                    viewModel.startNewConversation()
+                    viewModel.navigateTo(.chat)
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 32, height: 32)
+                        .background(primaryColor)
+                        .clipShape(Circle())
+                }
+                .accessibilityLabel("New conversation")
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 12)
-            .background(themeColor)
+            .background(Color(.systemBackground))
+            .overlay(Divider(), alignment: .bottom)
 
-            // Content
+            // ── Content ────────────────────────────────────────────────────────
             let conversations = viewModel.conversationList
+
             if conversations.isEmpty {
-                Spacer()
-                VStack(spacing: 16) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                        .font(.system(size: 48))
-                        .foregroundColor(Color.gray.opacity(0.5))
-                    Text("No conversations yet")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                    Text("Start chatting to see your history here.")
-                        .font(.caption)
-                        .foregroundColor(Color.gray.opacity(0.4))
-                }
-                Spacer()
+                EmptyHistoryState()
             } else {
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(alignment: .leading, spacing: 0) {
                         ForEach(conversations) { conversation in
-                            ConversationCard(
+                            ConversationRow(
                                 conversation: conversation,
-                                themeColor: themeColor,
-                                cornerRadius: cornerRadius,
+                                primaryColor: primaryColor,
                                 onTap: { viewModel.loadConversation(conversation) }
                             )
                         }
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
                 }
+                .background(Color(.systemBackground))
             }
         }
-        .background(Color(white: 0.95))
+        .background(Color(.systemBackground))
         .task {
             viewModel.loadConversationList()
         }
     }
 }
 
-// MARK: - ConversationCard
+// MARK: - Conversation row
 
-private struct ConversationCard: View {
+private struct ConversationRow: View {
     let conversation: ConversationListItem
-    let themeColor: Color
-    let cornerRadius: Double
+    let primaryColor: Color
     let onTap: () -> Void
 
     var body: some View {
         Button(action: onTap) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text(conversationTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(.caption)
-                        .foregroundColor(Color.gray.opacity(0.5))
+            HStack(spacing: 12) {
+                // Icon circle 40pt
+                ZStack {
+                    Circle()
+                        .fill(primaryColor.opacity(0.10))
+                        .frame(width: 40, height: 40)
+                    Text(topicEmoji(conversation.conversationTitle))
+                        .font(.system(size: 18))
                 }
-                Text(conversation.createdOn ?? "")
-                    .font(.caption2)
-                    .foregroundColor(Color.gray.opacity(0.4))
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: cornerRadius).fill(Color.white)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: cornerRadius)
-                    .stroke(Color.gray.opacity(0.2), lineWidth: 1)
-            )
-        }
-    }
 
-    private var conversationTitle: String {
-        if let title = conversation.conversationTitle, !title.isEmpty { return title }
-        return "Conversation"
+                // Content
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(conversation.conversationTitle ?? "Conversation")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.primary)
+                        .lineLimit(2)
+                    Text(conversation.createdOn ?? "")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.vertical, 14)
+            .padding(.horizontal, 16)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        Divider()
+            .padding(.leading, 68)
     }
+}
+
+// MARK: - Empty state
+
+private struct EmptyHistoryState: View {
+    var body: some View {
+        Spacer()
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(Color(red: 0.18, green: 0.49, blue: 0.20).opacity(0.10))
+                    .frame(width: 90, height: 90)
+                Text("💬").font(.system(size: 40))
+            }
+            Text("No conversations yet")
+                .font(.system(size: 18, weight: .semibold))
+            Text("Your past conversations will appear here")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 32)
+        Spacer()
+    }
+}
+
+// MARK: - Topic emoji helper
+
+private func topicEmoji(_ title: String?) -> String {
+    let t = title?.lowercased() ?? ""
+    if t.contains("tomato") || t.contains("vegetable") { return "🍅" }
+    if t.contains("weather") || t.contains("rain") { return "🌧️" }
+    if t.contains("soil") || t.contains("npk") { return "🌱" }
+    if t.contains("irrigation") || t.contains("water") { return "💧" }
+    if t.contains("fertilizer") || t.contains("nutrient") { return "🌻" }
+    if t.contains("pest") || t.contains("insect") { return "🐛" }
+    if t.contains("wheat") || t.contains("rice") || t.contains("crop") { return "🌾" }
+    if t.contains("disease") { return "⚠️" }
+    return "💬"
 }
