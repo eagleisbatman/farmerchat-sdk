@@ -3,17 +3,15 @@ import SwiftUI
 
 /// Main entry point for the FarmerChat SwiftUI SDK.
 ///
-/// Initialize once early in your app's lifecycle (e.g., in `App.init()` or `AppDelegate`).
-/// Access the singleton via ``FarmerChat/shared``.
-///
+/// Initialize once early in your app lifecycle (e.g. `App.init()` or `AppDelegate`):
 /// ```swift
-/// FarmerChat.shared.initialize(config: FarmerChatConfig(
-///     apiKey: "your-api-key",
-///     defaultLanguage: "en"
-/// ))
+/// FarmerChat.shared.configure(
+///     FarmerChatConfig(
+///         baseUrl:   "https://farmerchat.farmstack.co/mobile-app-dev",
+///         sdkApiKey: "fc_test_<your_key>"
+///     )
+/// )
 /// ```
-///
-/// All methods are wrapped in do/catch -- the SDK must NEVER crash the host app.
 @MainActor
 public final class FarmerChat {
 
@@ -25,91 +23,74 @@ public final class FarmerChat {
     /// Whether the SDK has been initialized.
     public private(set) var isInitialized = false
 
-    /// The current SDK configuration, or `nil` if not yet initialized.
+    /// The current SDK configuration.
     public private(set) var config: FarmerChatConfig?
 
-    // MARK: - Internal Components (accessed by ChatViewModel)
+    // MARK: - Internal components
 
-    /// HTTP client for API calls.
     internal var apiClient: ApiClient?
-
-    /// Network connectivity monitor.
     internal var connectivityMonitor: ConnectivityMonitor?
-
-    /// Crash reporting bridge.
     internal var crashBridge: CrashBridge?
-
-    /// Event callback for SDK lifecycle events.
     internal var eventCallback: ((FarmerChatEvent) -> Void)?
-
-    /// Shared ViewModel instance — created once during initialize, torn down in destroy.
     internal var chatViewModel: ChatViewModel?
 
-    /// Auto-generated session ID (used when config.sessionId is nil).
-    private var generatedSessionId: String?
+    private var sessionId: String?
 
     private init() {}
 
     // MARK: - Public API
 
-    /// Initialize the FarmerChat SDK with configuration.
+    /// Configure and initialize the SDK. Idempotent — safe to call more than once.
     ///
-    /// This method is idempotent -- calling it more than once is a no-op.
-    /// All work is wrapped in do/catch so SDK initialization can never crash the host app.
-    ///
-    /// - Parameter config: SDK configuration including API key, theme, and callbacks.
-    public func initialize(config: FarmerChatConfig) {
+    /// On first call this will:
+    /// 1. Store the device ID in `UserDefaults` and `TokenStore`.
+    /// 2. Create the `ApiClient`.
+    /// 3. Launch a background task to call `initialize_user` (guest auth).
+    public func configure(_ config: FarmerChatConfig) {
         guard !isInitialized else { return }
 
         self.config = config
-        self.generatedSessionId = UUID().uuidString
+        self.sessionId = UUID().uuidString
         self.eventCallback = config.onEvent
 
-        // Validate and create the API client
-        guard let baseURL = URL(string: config.baseUrl),
-              let scheme = baseURL.scheme?.lowercased(),
-              scheme == "http" || scheme == "https" else {
-            print("[\(FarmerChat.tag)] Invalid base URL (must be http/https): \(config.baseUrl)")
-            return
-        }
+        let deviceId = DeviceInfoProvider.stableDeviceId()
+        let deviceInfo = DeviceInfoProvider.buildHeader(deviceId: deviceId)
+        Task { await TokenStore.shared.setDeviceId(deviceId) }
+
         self.apiClient = ApiClient(
-            baseURL: baseURL,
-            apiKey: config.apiKey,
-            requestTimeoutMs: config.requestTimeoutMs,
-            sseTimeoutMs: config.requestTimeoutMs * 2
+            baseUrl: config.baseUrl,
+            sdkApiKey: config.sdkApiKey,
+            deviceInfo: deviceInfo,
+            timeoutMs: config.requestTimeoutMs
         )
 
-        // Create and start the connectivity monitor
         let monitor = ConnectivityMonitor()
         monitor.start()
         self.connectivityMonitor = monitor
 
-        // Create and detect the crash bridge
         let bridge = CrashBridge()
         bridge.detect()
         self.crashBridge = bridge
 
-        // Set custom keys on crash bridge for diagnostics
-        bridge.setCustomKey("sdk_version", value: "0.0.0")
-        if let partnerId = config.partnerId {
-            bridge.setCustomKey("partner_id", value: partnerId)
-        }
-
         self.chatViewModel = ChatViewModel()
         self.isInitialized = true
-        print("[\(FarmerChat.tag)] SDK initialized successfully")
+
+        // Background: ensure guest tokens are available before first chat
+        Task {
+            do {
+                let initialized = await TokenStore.shared.isInitialized
+                if !initialized {
+                    try await GuestAPIClient(baseUrl: config.baseUrl).initializeUser(deviceId: deviceId)
+                }
+            } catch {
+                print("[\(FarmerChat.tag)] Background guest init failed (will retry on chat open): \(error)")
+            }
+        }
+
+        print("[\(FarmerChat.tag)] SDK initialized")
     }
 
-    /// Returns the main chat view.
-    ///
-    /// Present this as a sheet, fullScreenCover, or push onto a NavigationStack.
-    /// The SDK must be initialized before calling this method.
-    ///
-    /// ```swift
-    /// .fullScreenCover(isPresented: $showChat) {
-    ///     FarmerChat.shared.chatView()
-    /// }
-    /// ```
+    /// Returns the main chat view. Present as a sheet, fullScreenCover, or push.
     @MainActor @ViewBuilder
     public func chatView() -> some View {
         if isInitialized, let viewModel = chatViewModel {
@@ -121,35 +102,25 @@ public final class FarmerChat {
     }
 
     /// Destroy the SDK and release all resources.
-    ///
-    /// After calling this, ``initialize(config:)`` may be called again.
+    /// After calling this, `configure(_:)` may be called again.
     public func destroy() {
-        chatViewModel?.stopStream()
         connectivityMonitor?.stop()
-        connectivityMonitor = nil
+        Task { await TokenStore.shared.clearTokens() }
         apiClient = nil
+        connectivityMonitor = nil
         crashBridge = nil
         eventCallback = nil
         chatViewModel = nil
         config = nil
-        generatedSessionId = nil
+        sessionId = nil
         isInitialized = false
         print("[\(FarmerChat.tag)] SDK destroyed")
     }
 
-    // MARK: - Internal Accessors
+    // MARK: - Internal accessors
 
-    /// Get the current session ID.
-    ///
-    /// Returns the config-provided session ID if set, otherwise the auto-generated one.
-    /// Returns an empty string if the SDK has not been initialized.
-    internal func getSessionId() -> String {
-        config?.sessionId ?? generatedSessionId ?? ""
-    }
+    internal func getSessionId() -> String { sessionId ?? "" }
 
-    /// Get the current SDK configuration, or defaults if not yet initialized.
-    ///
-    /// All callers must be on the MainActor (SwiftUI view bodies, @MainActor ViewModels).
     nonisolated internal static func getConfig() -> FarmerChatConfig {
         MainActor.assumeIsolated { shared.config } ?? FarmerChatConfig()
     }

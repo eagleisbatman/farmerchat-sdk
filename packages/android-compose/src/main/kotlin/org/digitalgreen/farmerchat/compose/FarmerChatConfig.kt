@@ -2,72 +2,72 @@ package org.digitalgreen.farmerchat.compose
 
 /**
  * Configuration for the FarmerChat SDK.
- * Passed to [FarmerChat.initialize] to customize behavior and appearance.
- *
- * All fields have sensible defaults. Only override what you need.
+ * Passed to [FarmerChat.initialize] to customise behaviour and appearance.
  */
 data class FarmerChatConfig(
 
-    /** Base URL for the FarmerChat API. Defaults to production. */
-    val baseUrl: String = "https://api.farmerchat.digitalgreen.org",
+    /** Base URL for the FarmerChat API. */
+    val baseUrl: String = "https://farmerchat.farmstack.co/mobile-app-dev",
+
+    /**
+     * SDK API key issued by Digital Green.
+     * Format: `fc_live_<16+ alphanumeric>` (production) or `fc_test_<16+ alphanumeric>` (sandbox).
+     * Sent on every request as the `X-SDK-Key` header.
+     */
+    val sdkApiKey: String = "",
+
+    /**
+     * Optional multi-tenant content provider identifier.
+     * Sent in [newConversation] requests when non-null.
+     */
+    val contentProviderId: String? = null,
+
+    // ── UI / behaviour ────────────────────────────────────────────────────
 
     /** Primary brand color as ARGB Long (e.g., 0xFF1B6B3A). */
     val primaryColor: Long = 0xFF1B6B3A,
 
-    /** Secondary/accent color as ARGB Long. Used for backgrounds and highlights. */
+    /** Secondary/accent color as ARGB Long. */
     val secondaryColor: Long = 0xFFF0F7F2,
 
     /** Header title displayed in the chat screen toolbar. */
     val headerTitle: String = "FarmerChat",
 
-    /** Default language code (e.g., "hi", "en", "sw"). Loaded from server if null. */
+    /** Default language code (e.g., "hi", "en", "sw"). */
     val defaultLanguage: String? = null,
 
-    /** Enable voice input. Defaults to true. */
+    /** Enable voice input. */
     val voiceInputEnabled: Boolean = true,
 
-    /** Enable image input (camera/gallery). Defaults to true. */
+    /** Enable image input (camera / gallery). */
     val imageInputEnabled: Boolean = true,
 
-    /** Enable chat history screen. Defaults to true. */
+    /** Enable chat history screen. */
     val historyEnabled: Boolean = true,
 
-    /** Enable profile/settings screen. Defaults to true. */
+    /** Enable profile / settings screen. */
     val profileEnabled: Boolean = true,
 
-    /** Show "Powered by FarmerChat" branding. Defaults to true. */
+    /** Show "Powered by FarmerChat" branding. */
     val showPoweredBy: Boolean = true,
 
-    /** Maximum number of messages to keep in memory. Defaults to 50. */
+    /** Maximum number of messages to keep in memory. */
     val maxMessagesInMemory: Int = 50,
 
-    /** HTTP request timeout in milliseconds. Defaults to 15 000 ms. */
+    // ── Network ───────────────────────────────────────────────────────────
+
+    /** HTTP connect and read timeout in milliseconds. */
     val requestTimeoutMs: Int = 15_000,
 
-    /** SSE stream read timeout in milliseconds. Defaults to 30 000 ms. */
-    val sseTimeoutMs: Int = 30_000,
-
-    /**
-     * Number of SSE reconnect attempts before showing a connection error.
-     * Defaults to 1.
-     */
-    val sseReconnectAttempts: Int = 1,
-
-    /** Corner radius for cards and buttons in dp. Defaults to 12. */
+    /** Corner radius for cards and buttons in dp. */
     val cornerRadius: Int = 12,
 
-    /** Font family name. "System" uses the platform default. */
-    val fontFamily: String = "System",
-
-    /** Partner identifier used for analytics segmentation and content injection. */
-    val partnerId: String? = null,
-
-    /** Maximum thumbnail dimension in dp for image previews. Defaults to 300. */
+    /** Maximum thumbnail dimension in dp for image previews. */
     val maxImageDimension: Int = 300,
 
-    /** Image compression quality (0-100) applied before uploading. Defaults to 80. */
+    /** Image compression quality (0–100) applied before uploading. */
     val imageCompressionQuality: Int = 80,
 
-    /** Maximum image upload size in bytes. Defaults to 5 MB. */
+    /** Maximum image upload size in bytes (default 5 MB). */
     val imageSizeLimitBytes: Long = 5_242_880L,
 )

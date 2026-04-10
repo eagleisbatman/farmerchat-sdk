@@ -19,17 +19,15 @@ export { useChat } from './hooks/useChat';
 export { useConnectivity } from './hooks/useConnectivity';
 export { useVoice } from './hooks/useVoice';
 
-// Re-export core types for convenience
-export type {
-  FarmerChatConfig,
-  ThemeConfig,
-  CrashConfig,
-  Message,
-  Conversation,
-  Query,
-  FeedbackPayload,
-  FollowUpQuestion,
-  StarterQuestion,
-  SDKEvent,
-  MarkdownDocument,
-} from '@digitalgreenorg/farmerchat-core';
+// SDK singleton & config
+export { FarmerChatSDK } from './config/SDKConfig';
+export type { SDKConfiguration } from './config/SDKConfig';
+
+// Network layer (for advanced usage)
+export { ChatApiClient } from './network/ChatApiClient';
+export { TokenStorage } from './network/TokenStorage';
+export { GuestApiClient } from './network/GuestApiClient';
+
+// Models
+export type * from './models/requests';
+export type * from './models/responses';

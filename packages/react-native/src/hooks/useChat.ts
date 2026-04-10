@@ -1,53 +1,61 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { FarmerChatApiClient } from '@digitalgreenorg/farmerchat-core';
-import type {
-  Message,
-  Query,
-  FeedbackPayload,
-  FollowUpQuestion,
-  StarterQuestion,
-  Conversation,
-} from '@digitalgreenorg/farmerchat-core';
-import {
-  DEFAULTS,
-  ErrorCodes,
-  FarmerChatError,
-  StreamingMarkdownParser,
-  type MarkdownDocument,
-} from '@digitalgreenorg/farmerchat-core';
-import type { SDKEvent } from '@digitalgreenorg/farmerchat-core';
 import { useFarmerChatConfig } from '../FarmerChat';
+import { FarmerChatSDK } from '../config/SDKConfig';
+import { ChatApiClient } from '../network/ChatApiClient';
+import { TokenStorage } from '../network/TokenStorage';
+import { GuestApiClient } from '../network/GuestApiClient';
+import type {
+  ConversationListItem,
+  ConversationChatHistoryMessageItem,
+} from '../models/responses';
+import type { TriggeredInputType } from '../models/requests';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-type ChatState = 'idle' | 'sending' | 'streaming' | 'error';
+type ChatState = 'idle' | 'sending' | 'error';
 type Screen = 'onboarding' | 'chat' | 'history' | 'profile';
+
+export interface FollowUp {
+  follow_up_question_id: string;
+  question: string;
+  sequence: number;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  text: string;
+  timestamp: number;
+  inputMethod?: TriggeredInputType;
+  imageData?: string;
+  followUps: FollowUp[];
+  contentProviderLogo?: string;
+  hideTtsSpeaker: boolean;
+  serverMessageId?: string;
+}
 
 export interface UseChatReturn {
   // State
   chatState: ChatState;
-  messages: Message[];
-  starterQuestions: StarterQuestion[];
+  messages: ChatMessage[];
   currentScreen: Screen;
   isConnected: boolean;
   selectedLanguage: string;
-  availableLanguages: Array<{ code: string; name: string; nativeName: string }>;
+  conversationList: ConversationListItem[];
   errorMessage: string | null;
-  streamingMarkdown: MarkdownDocument | null;
 
   // Actions
-  sendQuery: (text: string, imageData?: string) => Promise<void>;
-  sendFollowUp: (text: string) => Promise<void>;
-  stopStream: () => void;
+  sendQuery: (text: string, inputMethod?: TriggeredInputType, imageData?: string) => Promise<void>;
+  sendFollowUp: (text: string, followUpQuestionId?: string) => Promise<void>;
   retryLastQuery: () => Promise<void>;
-  submitFeedback: (responseId: string, rating: 'positive' | 'negative') => Promise<void>;
-  loadHistory: () => Promise<Conversation[]>;
-  loadLanguages: () => Promise<void>;
+  startNewConversation: () => void;
+  loadConversationList: () => Promise<void>;
+  loadConversation: (item: ConversationListItem) => Promise<void>;
+  synthesiseAudio: (serverMessageId: string, text: string) => Promise<string | null>;
+  transcribeAudio: (base64Audio: string, format?: string) => Promise<string | null>;
   setLanguage: (code: string) => void;
-  loadStarters: () => Promise<void>;
-  completeOnboarding: (location: { lat: number; lng: number }, language: string) => Promise<void>;
   navigateTo: (screen: Screen) => void;
   setIsConnected: (connected: boolean) => void;
 }
@@ -57,11 +65,8 @@ export interface UseChatReturn {
 // ---------------------------------------------------------------------------
 
 function generateId(): string {
-  // Use globalThis.crypto when available (modern Hermes), otherwise fallback
   const g = globalThis as { crypto?: { randomUUID?: () => string } };
-  if (g.crypto?.randomUUID) {
-    return g.crypto.randomUUID();
-  }
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID();
   return (
     Math.random().toString(36).slice(2) +
     Date.now().toString(36) +
@@ -74,796 +79,379 @@ function generateId(): string {
 // ---------------------------------------------------------------------------
 
 /**
- * Full chat state machine hook.
+ * Full chat state machine hook for FarmerChat.
  *
- * State flow: Idle -> Sending -> Streaming -> Idle | Error
+ * State flow: Idle → Sending → Idle | Error
  *
- * All networking uses the core FarmerChatApiClient (fetch-based).
- * All state is held in React hooks — no local persistence.
+ * All networking uses `ChatApiClient` (fetch-based). All state is in React hooks.
+ * No local persistence.
  */
 export function useChat(): UseChatReturn {
   const config = useFarmerChatConfig();
 
-  // --- Refs (stable across renders, no re-render on mutation) ---
-  const apiClientRef = useRef<FarmerChatApiClient | null>(null);
-  const sessionIdRef = useRef<string>(config.sessionId ?? generateId());
-  const streamingParserRef = useRef<StreamingMarkdownParser | null>(null);
-  const isMountedRef = useRef(true);
-  const lastQueryRef = useRef<{ text: string; imageData?: string } | null>(null);
+  // --- Refs ---
+  const apiClientRef = useRef<ChatApiClient | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
+  const lastQueryRef = useRef<{ text: string; inputMethod: TriggeredInputType; imageData?: string } | null>(null);
 
   // --- State ---
   const [chatState, setChatState] = useState<ChatState>('idle');
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [starterQuestions, setStarterQuestions] = useState<StarterQuestion[]>([]);
-  const [currentScreen, setCurrentScreen] = useState<Screen>('onboarding');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [currentScreen, setCurrentScreen] = useState<Screen>('chat');
   const [isConnected, setIsConnected] = useState(true);
-  const [selectedLanguage, setSelectedLanguage] = useState(config.defaultLanguage ?? 'en');
-  const [availableLanguages, setAvailableLanguages] = useState<
-    Array<{ code: string; name: string; nativeName: string }>
-  >([]);
+  const [selectedLanguage, setSelectedLanguage] = useState('en');
+  const [conversationList, setConversationList] = useState<ConversationListItem[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [streamingMarkdown, setStreamingMarkdown] = useState<MarkdownDocument | null>(null);
 
-  // Max messages to keep in memory
-  const maxMessages = config.maxMessagesInMemory ?? DEFAULTS.maxMessagesInMemory;
-
-  // --- Initialize API client ---
+  // --- Init API client ---
   useEffect(() => {
-    apiClientRef.current = new FarmerChatApiClient(config);
-  }, [config]);
+    if (!FarmerChatSDK.isConfigured()) {
+      FarmerChatSDK.configure(config);
+    }
+    apiClientRef.current = new ChatApiClient(FarmerChatSDK.getConfig());
 
-  // --- Cleanup on unmount ---
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-      apiClientRef.current?.stopStream();
-    };
+    // Ensure guest tokens on mount
+    void FarmerChatSDK.ensureTokens().catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- Event emission helper ---
-  const emitEvent = useCallback(
-    (event: SDKEvent) => {
-      try {
-        config.onEvent?.(event);
-      } catch {
-        // SDK events must never crash the host app
-      }
-    },
-    [config]
-  );
+  // --- Append a message, capped at 50 ---
+  const appendMessage = useCallback((msg: ChatMessage) => {
+    setMessages(prev => {
+      const next = [...prev, msg];
+      return next.length > 50 ? next.slice(next.length - 50) : next;
+    });
+  }, []);
 
-  // --- Safe state setters (guard against updates after unmount) ---
-  // NoInfer forces T to be inferred from the setter, not the value literal.
-  const safeSetState = useCallback(
-    <T,>(setter: React.Dispatch<React.SetStateAction<T>>, value: NoInfer<React.SetStateAction<T>>) => {
-      if (isMountedRef.current) {
-        setter(value);
-      }
-    },
-    []
-  );
+  // --- Ensure guest tokens before any API call ---
+  const ensureTokens = useCallback(async () => {
+    try {
+      await GuestApiClient.ensureTokens(config.baseUrl);
+    } catch {
+      // Best-effort; will surface as a network error
+    }
+  }, [config.baseUrl]);
 
-  // --- Append message with cap ---
-  const appendMessage = useCallback(
-    (msg: Message) => {
-      safeSetState(setMessages, (prev) => {
-        const next = [...prev, msg];
-        // Trim from the front to stay within the memory cap
-        if (next.length > maxMessages) {
-          return next.slice(next.length - maxMessages);
-        }
-        return next;
-      });
-    },
-    [maxMessages, safeSetState]
-  );
+  // --- Ensure conversation ID exists ---
+  const ensureConversation = useCallback(async (): Promise<string> => {
+    if (conversationIdRef.current) return conversationIdRef.current;
 
-  // --- Upsert assistant message (update in place if id exists, else append) ---
-  const upsertAssistantMessage = useCallback(
-    (msg: Message) => {
-      safeSetState(setMessages, (prev) => {
-        const idx = prev.findIndex((m) => m.id === msg.id);
-        if (idx !== -1) {
-          const next = [...prev];
-          next[idx] = msg;
-          return next;
-        }
-        const next = [...prev, msg];
-        if (next.length > maxMessages) {
-          return next.slice(next.length - maxMessages);
-        }
-        return next;
-      });
-    },
-    [maxMessages, safeSetState]
-  );
+    const client = apiClientRef.current;
+    if (!client) throw new Error('Chat client not initialized');
+
+    const userId = await TokenStorage.getUserId();
+    const resp = await client.createNewConversation({
+      user_id: userId,
+      content_provider_id: config.contentProviderId ?? null,
+    });
+    conversationIdRef.current = resp.conversation_id;
+    return resp.conversation_id;
+  }, [config.contentProviderId]);
 
   // ---------------------------------------------------------------------------
   // sendQuery
   // ---------------------------------------------------------------------------
-  const sendQuery = useCallback(
-    async (text: string, imageData?: string) => {
-      const client = apiClientRef.current;
-      if (!client) return;
 
-      // Track for retry
-      lastQueryRef.current = { text, imageData };
+  const sendQuery = useCallback(async (
+    text: string,
+    inputMethod: TriggeredInputType = 'text',
+    imageData?: string,
+  ) => {
+    const client = apiClientRef.current;
+    if (!client) {
+      setErrorMessage('SDK not initialized');
+      setChatState('error');
+      return;
+    }
 
-      // Clear previous error
-      safeSetState(setErrorMessage, null);
-      safeSetState(setChatState, 'sending');
-      safeSetState(setStreamingMarkdown, null);
+    lastQueryRef.current = { text, inputMethod, imageData };
 
-      // Build query
-      const queryId = generateId();
-      const inputMethod = imageData ? 'image' : 'text';
-      const query: Query = {
-        id: queryId,
-        text,
-        inputMethod,
-        imageData,
-        location: config.location,
-        language: selectedLanguage,
-        timestamp: Date.now(),
-      };
+    const userMessageId = generateId();
+    appendMessage({
+      id: userMessageId,
+      role: 'user',
+      text,
+      timestamp: Date.now(),
+      inputMethod,
+      imageData,
+      followUps: [],
+      hideTtsSpeaker: false,
+    });
 
-      // Add user message
-      const userMessage: Message = {
-        id: queryId,
-        role: 'user',
-        text,
-        timestamp: query.timestamp,
-        imageData,
-      };
-      appendMessage(userMessage);
+    setChatState('sending');
+    setErrorMessage(null);
 
-      // Emit query_sent event
-      emitEvent({
-        type: 'query_sent',
-        timestamp: Date.now(),
-        sessionId: sessionIdRef.current,
-        queryId,
-        inputMethod,
-      });
+    try {
+      await ensureTokens();
+      const conversationId = await ensureConversation();
+      const clientMessageId = generateId();
 
-      // Prepare streaming state
-      const responseId = generateId();
-      let accumulatedText = '';
-      let followUps: FollowUpQuestion[] = [];
-      let tokenIndex = 0;
-      let firstTokenReceived = false;
-      const streamParser = new StreamingMarkdownParser();
-      streamingParserRef.current = streamParser;
-      const streamStartTime = Date.now();
+      if (imageData) {
+        const resp = await client.sendImageAnalysis({
+          conversation_id: conversationId,
+          image: imageData,
+          triggered_input_type: 'image',
+          image_name: `image_${generateId()}.jpg`,
+          retry: false,
+        });
 
-      try {
-        const stream = client.sendQuery(query);
-
-        for await (const event of stream) {
-          if (!isMountedRef.current) break;
-
-          switch (event.event) {
-            case 'token': {
-              const tokenData = event.data as { text?: string; index?: number };
-              const tokenText = tokenData.text ?? '';
-
-              if (!firstTokenReceived) {
-                firstTokenReceived = true;
-                safeSetState(setChatState, 'streaming');
-                emitEvent({
-                  type: 'streaming_started',
-                  timestamp: Date.now(),
-                  sessionId: sessionIdRef.current,
-                  queryId,
-                });
-              }
-
-              accumulatedText += tokenText;
-
-              // Parse markdown incrementally
-              const doc = streamParser.append(tokenText);
-              safeSetState(setStreamingMarkdown, doc);
-
-              // Upsert the in-progress assistant message
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps: [],
-              });
-
-              // Emit streaming_token event
-              emitEvent({
-                type: 'streaming_token',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                text: tokenText,
-                index: tokenData.index ?? tokenIndex,
-              });
-
-              tokenIndex++;
-              break;
-            }
-
-            case 'followup': {
-              const followUpData = event.data as
-                | FollowUpQuestion[]
-                | { questions?: FollowUpQuestion[] };
-              if (Array.isArray(followUpData)) {
-                followUps = followUpData;
-              } else if (Array.isArray(followUpData.questions)) {
-                followUps = followUpData.questions;
-              }
-              break;
-            }
-
-            case 'message': {
-              // Non-streaming fallback (canned answer / JSON response)
-              const msgData = event.data as {
-                text?: string;
-                followUps?: FollowUpQuestion[];
-                follow_ups?: FollowUpQuestion[];
-              };
-              accumulatedText = msgData.text ?? '';
-              followUps = msgData.followUps ?? msgData.follow_ups ?? [];
-
-              // Parse the full text at once
-              const fullDoc = streamParser.append(accumulatedText);
-              safeSetState(setStreamingMarkdown, fullDoc);
-
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps,
-              });
-              break;
-            }
-
-            case 'error': {
-              const errData = event.data as { message?: string; code?: string };
-              const errMsg = errData.message ?? 'An error occurred';
-              safeSetState(setChatState, 'error');
-              safeSetState(setErrorMessage, errMsg);
-              emitEvent({
-                type: 'error',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                code: errData.code ?? ErrorCodes.UNKNOWN,
-                message: errMsg,
-                fatal: false,
-              });
-              break;
-            }
-
-            case 'done': {
-              // Finalize the assistant message
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps,
-              });
-
-              safeSetState(setChatState, 'idle');
-              safeSetState(setStreamingMarkdown, null);
-              streamingParserRef.current = null;
-
-              emitEvent({
-                type: 'response_received',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                responseId,
-                latencyMs: Date.now() - streamStartTime,
-              });
-              break;
-            }
-
-            default:
-              // Unknown event types are silently ignored
-              break;
-          }
-        }
-      } catch (error: unknown) {
-        if (!isMountedRef.current) return;
-
-        const message =
-          error instanceof FarmerChatError
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred';
-
-        const code =
-          error instanceof FarmerChatError ? error.code : ErrorCodes.UNKNOWN;
-
-        safeSetState(setChatState, 'error');
-        safeSetState(setErrorMessage, message);
-        safeSetState(setStreamingMarkdown, null);
-        streamingParserRef.current = null;
-
-        emitEvent({
-          type: 'error',
+        appendMessage({
+          id: generateId(),
+          role: 'assistant',
+          text: resp.response,
           timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          code,
-          message,
-          fatal: error instanceof FarmerChatError ? error.fatal : false,
+          followUps: resp.follow_up_questions?.map(f => ({
+            follow_up_question_id: f.follow_up_question_id,
+            question: f.question,
+            sequence: f.sequence,
+          })) ?? [],
+          contentProviderLogo: resp.content_provider_logo,
+          hideTtsSpeaker: resp.hide_tts_speaker ?? false,
+          serverMessageId: resp.message_id,
+        });
+      } else {
+        const resp = await client.sendTextPrompt({
+          query: text,
+          conversation_id: conversationId,
+          message_id: clientMessageId,
+          triggered_input_type: inputMethod,
+          weather_cta_triggered: false,
+          use_entity_extraction: true,
+          retry: false,
+        });
+
+        const answerText = resp.response ?? resp.message ?? '';
+        appendMessage({
+          id: generateId(),
+          role: 'assistant',
+          text: answerText,
+          timestamp: Date.now(),
+          followUps: resp.follow_up_questions?.map(f => ({
+            follow_up_question_id: f.follow_up_question_id,
+            question: f.question,
+            sequence: f.sequence,
+          })) ?? [],
+          contentProviderLogo: resp.content_provider_logo,
+          hideTtsSpeaker: resp.hide_tts_speaker ?? false,
+          serverMessageId: resp.message_id,
         });
       }
-    },
-    [
-      config.location,
-      selectedLanguage,
-      appendMessage,
-      upsertAssistantMessage,
-      emitEvent,
-      safeSetState,
-    ]
-  );
+
+      setChatState('idle');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(msg);
+      setChatState('error');
+    }
+  }, [appendMessage, ensureConversation, ensureTokens]);
 
   // ---------------------------------------------------------------------------
   // sendFollowUp
   // ---------------------------------------------------------------------------
-  const sendFollowUp = useCallback(
-    async (text: string) => {
-      const client = apiClientRef.current;
-      if (!client) return;
 
-      // Follow-up uses the same flow as sendQuery but with inputMethod 'follow_up'
-      lastQueryRef.current = { text };
-
-      safeSetState(setErrorMessage, null);
-      safeSetState(setChatState, 'sending');
-      safeSetState(setStreamingMarkdown, null);
-
-      const queryId = generateId();
-      const query: Query = {
-        id: queryId,
-        text,
-        inputMethod: 'follow_up',
-        location: config.location,
-        language: selectedLanguage,
-        timestamp: Date.now(),
-      };
-
-      const userMessage: Message = {
-        id: queryId,
-        role: 'user',
-        text,
-        timestamp: query.timestamp,
-      };
-      appendMessage(userMessage);
-
-      emitEvent({
-        type: 'query_sent',
-        timestamp: Date.now(),
-        sessionId: sessionIdRef.current,
-        queryId,
-        inputMethod: 'follow_up',
-      });
-
-      const responseId = generateId();
-      let accumulatedText = '';
-      let followUps: FollowUpQuestion[] = [];
-      let tokenIndex = 0;
-      let firstTokenReceived = false;
-      const streamParser = new StreamingMarkdownParser();
-      streamingParserRef.current = streamParser;
-      const streamStartTime = Date.now();
-
-      try {
-        const stream = client.sendQuery(query);
-
-        for await (const event of stream) {
-          if (!isMountedRef.current) break;
-
-          switch (event.event) {
-            case 'token': {
-              const tokenData = event.data as { text?: string; index?: number };
-              const tokenText = tokenData.text ?? '';
-
-              if (!firstTokenReceived) {
-                firstTokenReceived = true;
-                safeSetState(setChatState, 'streaming');
-                emitEvent({
-                  type: 'streaming_started',
-                  timestamp: Date.now(),
-                  sessionId: sessionIdRef.current,
-                  queryId,
-                });
-              }
-
-              accumulatedText += tokenText;
-              const doc = streamParser.append(tokenText);
-              safeSetState(setStreamingMarkdown, doc);
-
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps: [],
-              });
-
-              emitEvent({
-                type: 'streaming_token',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                text: tokenText,
-                index: tokenData.index ?? tokenIndex,
-              });
-
-              tokenIndex++;
-              break;
-            }
-
-            case 'followup': {
-              const followUpData = event.data as
-                | FollowUpQuestion[]
-                | { questions?: FollowUpQuestion[] };
-              if (Array.isArray(followUpData)) {
-                followUps = followUpData;
-              } else if (Array.isArray(followUpData.questions)) {
-                followUps = followUpData.questions;
-              }
-              break;
-            }
-
-            case 'message': {
-              const msgData = event.data as {
-                text?: string;
-                followUps?: FollowUpQuestion[];
-                follow_ups?: FollowUpQuestion[];
-              };
-              accumulatedText = msgData.text ?? '';
-              followUps = msgData.followUps ?? msgData.follow_ups ?? [];
-
-              const fullDoc = streamParser.append(accumulatedText);
-              safeSetState(setStreamingMarkdown, fullDoc);
-
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps,
-              });
-              break;
-            }
-
-            case 'error': {
-              const errData = event.data as { message?: string; code?: string };
-              const errMsg = errData.message ?? 'An error occurred';
-              safeSetState(setChatState, 'error');
-              safeSetState(setErrorMessage, errMsg);
-              emitEvent({
-                type: 'error',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                code: errData.code ?? ErrorCodes.UNKNOWN,
-                message: errMsg,
-                fatal: false,
-              });
-              break;
-            }
-
-            case 'done': {
-              upsertAssistantMessage({
-                id: responseId,
-                role: 'assistant',
-                text: accumulatedText,
-                timestamp: Date.now(),
-                followUps,
-              });
-
-              safeSetState(setChatState, 'idle');
-              safeSetState(setStreamingMarkdown, null);
-              streamingParserRef.current = null;
-
-              emitEvent({
-                type: 'response_received',
-                timestamp: Date.now(),
-                sessionId: sessionIdRef.current,
-                responseId,
-                latencyMs: Date.now() - streamStartTime,
-              });
-              break;
-            }
-
-            default:
-              break;
-          }
-        }
-      } catch (error: unknown) {
-        if (!isMountedRef.current) return;
-
-        const message =
-          error instanceof FarmerChatError
-            ? error.message
-            : error instanceof Error
-              ? error.message
-              : 'An unexpected error occurred';
-
-        const code =
-          error instanceof FarmerChatError ? error.code : ErrorCodes.UNKNOWN;
-
-        safeSetState(setChatState, 'error');
-        safeSetState(setErrorMessage, message);
-        safeSetState(setStreamingMarkdown, null);
-        streamingParserRef.current = null;
-
-        emitEvent({
-          type: 'error',
-          timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          code,
-          message,
-          fatal: error instanceof FarmerChatError ? error.fatal : false,
-        });
-      }
-    },
-    [
-      config.location,
-      selectedLanguage,
-      appendMessage,
-      upsertAssistantMessage,
-      emitEvent,
-      safeSetState,
-    ]
-  );
-
-  // ---------------------------------------------------------------------------
-  // stopStream
-  // ---------------------------------------------------------------------------
-  const stopStream = useCallback(() => {
-    try {
-      apiClientRef.current?.stopStream();
-      safeSetState(setChatState, 'idle');
-      safeSetState(setStreamingMarkdown, null);
-      streamingParserRef.current = null;
-    } catch {
-      // Never crash the host app
+  const sendFollowUp = useCallback(async (text: string, followUpQuestionId?: string) => {
+    const client = apiClientRef.current;
+    if (client && followUpQuestionId) {
+      void client.trackFollowUpClick({ follow_up_question: followUpQuestionId }).catch(() => {});
     }
-  }, [safeSetState]);
+    await sendQuery(text, 'follow_up');
+  }, [sendQuery]);
 
   // ---------------------------------------------------------------------------
   // retryLastQuery
   // ---------------------------------------------------------------------------
+
   const retryLastQuery = useCallback(async () => {
-    const lastQuery = lastQueryRef.current;
-    if (!lastQuery) return;
-    await sendQuery(lastQuery.text, lastQuery.imageData);
+    const q = lastQueryRef.current;
+    if (!q) return;
+    setChatState('idle');
+    setErrorMessage(null);
+    await sendQuery(q.text, q.inputMethod, q.imageData);
   }, [sendQuery]);
 
   // ---------------------------------------------------------------------------
-  // submitFeedback
+  // startNewConversation
   // ---------------------------------------------------------------------------
-  const submitFeedback = useCallback(
-    async (responseId: string, rating: 'positive' | 'negative') => {
-      const client = apiClientRef.current;
-      if (!client) return;
 
-      const feedback: FeedbackPayload = { responseId, rating };
-
-      try {
-        await client.submitFeedback(feedback);
-
-        // Update the message's feedback field in state
-        safeSetState(setMessages, (prev) =>
-          prev.map((msg) =>
-            msg.id === responseId ? { ...msg, feedback } : msg
-          )
-        );
-
-        emitEvent({
-          type: 'feedback_submitted',
-          timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          responseId,
-          rating,
-        });
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : 'Failed to submit feedback';
-
-        emitEvent({
-          type: 'error',
-          timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          code: ErrorCodes.UNKNOWN,
-          message,
-          fatal: false,
-        });
-      }
-    },
-    [emitEvent, safeSetState]
-  );
+  const startNewConversation = useCallback(() => {
+    conversationIdRef.current = null;
+    setMessages([]);
+    setChatState('idle');
+    setErrorMessage(null);
+  }, []);
 
   // ---------------------------------------------------------------------------
-  // loadHistory
+  // History
   // ---------------------------------------------------------------------------
-  const loadHistory = useCallback(async (): Promise<Conversation[]> => {
-    const client = apiClientRef.current;
-    if (!client) return [];
 
-    try {
-      return await client.getHistory();
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to load history';
-
-      emitEvent({
-        type: 'error',
-        timestamp: Date.now(),
-        sessionId: sessionIdRef.current,
-        code: ErrorCodes.HISTORY_LOAD_FAILED,
-        message,
-        fatal: false,
-      });
-      return [];
-    }
-  }, [emitEvent]);
-
-  // ---------------------------------------------------------------------------
-  // loadLanguages
-  // ---------------------------------------------------------------------------
-  const loadLanguages = useCallback(async () => {
+  const loadConversationList = useCallback(async () => {
     const client = apiClientRef.current;
     if (!client) return;
-
     try {
-      const languages = await client.getLanguages();
-      safeSetState(setAvailableLanguages, languages);
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error ? error.message : 'Failed to load languages';
-
-      emitEvent({
-        type: 'error',
-        timestamp: Date.now(),
-        sessionId: sessionIdRef.current,
-        code: ErrorCodes.LANGUAGES_LOAD_FAILED,
-        message,
-        fatal: false,
-      });
+      await ensureTokens();
+      const list = await client.getConversationList();
+      setConversationList(list);
+    } catch {
+      // Silently fail — history is optional
     }
-  }, [emitEvent, safeSetState]);
+  }, [ensureTokens]);
 
-  // ---------------------------------------------------------------------------
-  // setLanguage
-  // ---------------------------------------------------------------------------
-  const setLanguage = useCallback(
-    (code: string) => {
-      const previousLanguage = selectedLanguage;
-      safeSetState(setSelectedLanguage, code);
-
-      emitEvent({
-        type: 'language_changed',
-        timestamp: Date.now(),
-        from: previousLanguage,
-        to: code,
-      });
-    },
-    [selectedLanguage, emitEvent, safeSetState]
-  );
-
-  // ---------------------------------------------------------------------------
-  // loadStarters
-  // ---------------------------------------------------------------------------
-  const loadStarters = useCallback(async () => {
+  const loadConversation = useCallback(async (item: ConversationListItem) => {
     const client = apiClientRef.current;
     if (!client) return;
-
     try {
-      const starters = await client.getStarters(selectedLanguage);
-      safeSetState(setStarterQuestions, starters);
-    } catch (error: unknown) {
-      // Starter questions are non-critical; fail silently
-      const message =
-        error instanceof Error ? error.message : 'Failed to load starter questions';
+      await ensureTokens();
+      const history = await client.getChatHistory(item.conversation_id);
+      conversationIdRef.current = item.conversation_id;
 
-      emitEvent({
-        type: 'error',
-        timestamp: Date.now(),
-        sessionId: sessionIdRef.current,
-        code: ErrorCodes.UNKNOWN,
-        message,
-        fatal: false,
-      });
+      const msgs: ChatMessage[] = history.data.compactMap(historyItemToMessage);
+      setMessages(msgs);
+      setCurrentScreen('chat');
+    } catch {
+      // Silently fail
     }
-  }, [selectedLanguage, emitEvent, safeSetState]);
+  }, [ensureTokens]);
 
   // ---------------------------------------------------------------------------
-  // completeOnboarding
+  // TTS / STT
   // ---------------------------------------------------------------------------
-  const completeOnboarding = useCallback(
-    async (location: { lat: number; lng: number }, language: string) => {
-      const client = apiClientRef.current;
-      if (!client) return;
 
-      try {
-        await client.submitOnboarding({ location, language });
+  const synthesiseAudio = useCallback(async (serverMessageId: string, text: string): Promise<string | null> => {
+    const client = apiClientRef.current;
+    if (!client) return null;
+    try {
+      const userId = await TokenStorage.getUserId();
+      const resp = await client.synthesiseAudio({ message_id: serverMessageId, text, user_id: userId });
+      return resp.audio ?? null;
+    } catch {
+      return null;
+    }
+  }, []);
 
-        safeSetState(setSelectedLanguage, language);
-        safeSetState(setCurrentScreen, 'chat');
-
-        emitEvent({
-          type: 'onboarding_completed',
-          timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          location,
-          language,
-        });
-      } catch (error: unknown) {
-        const message =
-          error instanceof Error ? error.message : 'Onboarding failed';
-
-        safeSetState(setErrorMessage, message);
-
-        emitEvent({
-          type: 'error',
-          timestamp: Date.now(),
-          sessionId: sessionIdRef.current,
-          code: ErrorCodes.ONBOARDING_FAILED,
-          message,
-          fatal: false,
-        });
-      }
-    },
-    [emitEvent, safeSetState]
-  );
+  const transcribeAudio = useCallback(async (base64Audio: string, format = 'AMR'): Promise<string | null> => {
+    const client = apiClientRef.current;
+    const convId = conversationIdRef.current;
+    if (!client || !convId) return null;
+    try {
+      const resp = await client.transcribeAudio({
+        conversation_id: convId,
+        query: base64Audio,
+        message_reference_id: generateId(),
+        input_audio_encoding_format: format as never,
+        triggered_input_type: 'audio',
+        editable_transcription: true,
+      });
+      return resp.error ? null : (resp.heard_input_query ?? null);
+    } catch {
+      return null;
+    }
+  }, []);
 
   // ---------------------------------------------------------------------------
-  // navigateTo
+  // Misc
   // ---------------------------------------------------------------------------
-  const navigateTo = useCallback(
-    (screen: Screen) => {
-      safeSetState(setCurrentScreen, screen);
-    },
-    [safeSetState]
-  );
 
-  // ---------------------------------------------------------------------------
-  // setIsConnected (public setter)
-  // ---------------------------------------------------------------------------
-  const setIsConnectedPublic = useCallback(
-    (connected: boolean) => {
-      safeSetState(setIsConnected, connected);
-    },
-    [safeSetState]
-  );
+  const setLanguage = useCallback((code: string) => {
+    setSelectedLanguage(code);
+  }, []);
 
-  // ---------------------------------------------------------------------------
-  // Return
-  // ---------------------------------------------------------------------------
+  const navigateTo = useCallback((screen: Screen) => {
+    setCurrentScreen(screen);
+  }, []);
+
   return {
-    // State
     chatState,
     messages,
-    starterQuestions,
     currentScreen,
     isConnected,
     selectedLanguage,
-    availableLanguages,
+    conversationList,
     errorMessage,
-    streamingMarkdown,
-
-    // Actions
     sendQuery,
     sendFollowUp,
-    stopStream,
     retryLastQuery,
-    submitFeedback,
-    loadHistory,
-    loadLanguages,
+    startNewConversation,
+    loadConversationList,
+    loadConversation,
+    synthesiseAudio,
+    transcribeAudio,
     setLanguage,
-    loadStarters,
-    completeOnboarding,
     navigateTo,
-    setIsConnected: setIsConnectedPublic,
+    setIsConnected,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Helper
+// ---------------------------------------------------------------------------
+
+function historyItemToMessage(item: ConversationChatHistoryMessageItem): ChatMessage | null {
+  switch (item.message_type_id) {
+    case 1:
+      return {
+        id: item.message_id,
+        role: 'user',
+        text: item.query_text ?? '',
+        timestamp: Date.now(),
+        inputMethod: 'text',
+        followUps: [],
+        hideTtsSpeaker: false,
+        serverMessageId: item.message_id,
+      };
+    case 2:
+      return {
+        id: item.message_id,
+        role: 'user',
+        text: item.heard_query_text ?? item.query_text ?? '',
+        timestamp: Date.now(),
+        inputMethod: 'audio',
+        followUps: [],
+        hideTtsSpeaker: false,
+        serverMessageId: item.message_id,
+      };
+    case 11:
+      return {
+        id: item.message_id,
+        role: 'user',
+        text: item.query_text ?? '',
+        timestamp: Date.now(),
+        inputMethod: 'image',
+        followUps: [],
+        hideTtsSpeaker: false,
+        serverMessageId: item.message_id,
+      };
+    case 3:
+      return {
+        id: item.message_id,
+        role: 'assistant',
+        text: item.response_text ?? '',
+        timestamp: Date.now(),
+        followUps: item.questions?.map(q => ({
+          follow_up_question_id: q.follow_up_question_id,
+          question: q.question,
+          sequence: q.sequence,
+        })) ?? [],
+        contentProviderLogo: item.content_provider_logo,
+        hideTtsSpeaker: item.hide_tts_speaker ?? false,
+        serverMessageId: item.message_id,
+      };
+    default:
+      return null;
+  }
+}
+
+// Polyfill Array.prototype.compactMap for use above
+declare global {
+  interface Array<T> {
+    compactMap<U>(transform: (item: T) => U | null): U[];
+  }
+}
+if (!Array.prototype.compactMap) {
+  Array.prototype.compactMap = function <T, U>(transform: (item: T) => U | null): U[] {
+    return this.reduce((acc: U[], item: T) => {
+      const result = transform(item);
+      if (result !== null && result !== undefined) acc.push(result);
+      return acc;
+    }, []);
   };
 }
