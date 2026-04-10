@@ -43,7 +43,8 @@ object FarmerChat {
     internal var crashBridge: CrashBridge? = null
     internal var eventCallback: ((FarmerChatEvent) -> Unit)? = null
 
-    private val sdkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var sdkJob = SupervisorJob()
+    private var sdkScope = CoroutineScope(sdkJob + Dispatchers.IO)
 
     // ── Initialization ────────────────────────────────────────────────────────
 
@@ -148,6 +149,9 @@ object FarmerChat {
     fun destroy() {
         synchronized(this) {
             try {
+                sdkJob.cancel()
+                sdkJob = SupervisorJob()
+                sdkScope = CoroutineScope(sdkJob + Dispatchers.IO)
                 connectivityMonitor?.stop()
                 TokenStore.clear()
                 apiClient = null
