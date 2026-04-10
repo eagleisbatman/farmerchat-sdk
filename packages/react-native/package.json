@@ -3,6 +3,7 @@
   "version": "0.0.0",
   "description": "FarmerChat SDK for React Native (Expo)",
   "main": "./dist/index.js",
+  "source": "./src/index.ts",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {

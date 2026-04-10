@@ -6,18 +6,34 @@
     "orientation": "portrait",
     "scheme": "farmerchat-demo",
     "platforms": ["ios", "android"],
+    "newArchEnabled": true,
     "ios": {
       "bundleIdentifier": "org.digitalgreen.farmerchat.demo",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "FarmerChat uses your location to provide farming advice relevant to your area.",
+        "NSMicrophoneUsageDescription": "FarmerChat uses the microphone for voice input."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#1B6B3A"
       },
-      "package": "org.digitalgreen.farmerchat.demo.rn"
+      "package": "org.digitalgreen.farmerchat.demo.rn",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "RECORD_AUDIO"
+      ]
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FarmerChat uses your location to provide farming advice relevant to your area."
+        }
+      ]
     ]
   }
 }
