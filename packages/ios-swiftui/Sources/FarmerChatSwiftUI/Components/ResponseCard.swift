@@ -1,11 +1,15 @@
 import SwiftUI
 
-/// AI response card with markdown rendering and action bar.
+/// AI response card — light system theme.
 ///
-/// Displays the assistant avatar, rendered markdown content, optional follow-up
-/// suggestion chips, and a feedback action row (thumbs up/down + share).
-///
-/// Port of `ResponseCard.kt` from the Android Compose SDK.
+/// Layout:
+///   HStack(left-aligned)
+///   ├── leaf.circle.fill avatar 32pt
+///   └── VStack
+///       ├── Bubble (systemGray6, 18pt radius top-left 4pt)
+///       │   └── MarkdownContent
+///       ├── "Related questions" + vertical Ask list
+///       └── Listen button (TTS pill)
 struct ResponseCard: View {
 
     let message: ChatViewModel.ChatMessage
@@ -14,227 +18,149 @@ struct ResponseCard: View {
     var onFeedback: (String) -> Void = { _ in }
 
     @State private var feedbackRating: String?
+    @State private var listenState: ListenState = .idle
+
+    private var primaryColor: Color { colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32") }
+
+    enum ListenState { case idle, loading, playing }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Avatar + content row
-            HStack(alignment: .top, spacing: 8) {
-                // Small green circle avatar with "FC"
-                ZStack {
-                    Circle()
-                        .fill(Color(red: 0.106, green: 0.420, blue: 0.227)) // #1B6B3A
-                        .frame(width: 28, height: 28)
+        HStack(alignment: .top, spacing: 8) {
+            // Avatar — leaf icon 32pt circle
+            ZStack {
+                Circle()
+                    .fill(primaryColor)
+                    .frame(width: 32, height: 32)
+                Image(systemName: "leaf.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+            }
+            .padding(.top, 4)
 
-                    Text("FC")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
-
-                VStack(alignment: .leading, spacing: 4) {
-                    // Markdown rendered content
+            VStack(alignment: .leading, spacing: 8) {
+                // AI bubble — systemGray6, corners 18pt except top-left = 4pt
+                VStack(alignment: .leading, spacing: 0) {
                     MarkdownContent(text: message.text)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
+                .background(Color(.systemGray6))
+                .clipShape(
+                    RoundedCornerShape2(topLeft: 4, topRight: 18, bottomLeft: 18, bottomRight: 18)
+                )
+                .shadow(color: Color.black.opacity(0.04), radius: 2, x: 0, y: 1)
 
-                    // Blinking cursor while streaming
-                    if isStreaming {
-                        BlinkingCursor()
+                // ── Related questions ────────────────────────────────────────
+                if !isStreaming && !message.followUps.isEmpty {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Related questions")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                            .padding(.bottom, 8)
+
+                        ForEach(Array(message.followUps.enumerated()), id: \.offset) { idx, followUp in
+                            if idx > 0 { Divider().padding(.leading, 16) }
+                            HStack {
+                                Text(followUp.question)
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Button("Ask") {
+                                    onFollowUpClick(followUp.question)
+                                }
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(primaryColor)
+                            }
+                            .padding(.vertical, 12)
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                    .background(Color(.systemGray6))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+
+                // ── Action row — Listen pill ──────────────────────────────────
+                if !isStreaming && !message.hideTtsSpeaker {
+                    ListenButton(state: listenState) {
+                        listenState = .loading
+                        // TTS called from parent — placeholder
                     }
                 }
             }
 
-            // Follow-up chips (only when not streaming and followUps present)
-            if !isStreaming && !message.followUps.isEmpty {
-                FollowUpChips(
-                    followUps: message.followUps.map(\.question),
-                    onTap: onFollowUpClick
-                )
-                .padding(.leading, 36)
-                .padding(.top, 8)
-            }
-
-            // Action bar (only when not streaming)
-            if !isStreaming {
-                ActionBar(
-                    feedbackRating: feedbackRating,
-                    onFeedback: { rating in
-                        feedbackRating = rating
-                        onFeedback(rating)
-                    }
-                )
-                .padding(.leading, 36)
-                .padding(.top, 4)
-            }
+            Spacer()
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
     }
 }
 
-// MARK: - Follow-Up Chips
+// MARK: - Listen button
 
-/// Horizontally wrapping row of tappable suggestion chips.
-private struct FollowUpChips: View {
+private struct ListenButton: View {
+    let state: ResponseCard.ListenState
+    let onTap: () -> Void
 
-    let followUps: [String]
-    let onTap: (String) -> Void
+    private var primaryColor: Color { colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32") }
 
     var body: some View {
-        FlowLayout(spacing: 6, lineSpacing: 4) {
-            ForEach(followUps, id: \.self) { followUp in
-                Button {
-                    onTap(followUp)
-                } label: {
-                    Text(followUp)
-                        .font(.subheadline)
-                        .foregroundStyle(Color(red: 0.106, green: 0.420, blue: 0.227))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 16)
-                                .stroke(Color(red: 0.106, green: 0.420, blue: 0.227).opacity(0.4), lineWidth: 1)
-                        )
+        Button(action: onTap) {
+            Group {
+                switch state {
+                case .idle:
+                    Label("Listen", systemImage: "speaker.wave.2.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(primaryColor)
+                case .loading:
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: primaryColor))
+                        .frame(width: 16, height: 16)
+                case .playing:
+                    Label("Stop", systemImage: "stop.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(primaryColor)
                 }
-                .accessibilityLabel("Follow up: \(followUp)")
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .overlay(Capsule().stroke(primaryColor, lineWidth: 1))
     }
 }
 
-// MARK: - Action Bar
+// MARK: - FlowLayout (used by chips)
 
-/// Thumbs up, thumbs down, and share buttons.
-private struct ActionBar: View {
-
-    let feedbackRating: String?
-    let onFeedback: (String) -> Void
-
-    var body: some View {
-        HStack(spacing: 4) {
-            // Thumbs up
-            Button {
-                onFeedback("positive")
-            } label: {
-                Image(systemName: "hand.thumbsup.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(
-                        feedbackRating == "positive"
-                            ? Color(red: 0.106, green: 0.420, blue: 0.227)
-                            : Color.secondary
-                    )
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("Helpful")
-
-            // Thumbs down
-            Button {
-                onFeedback("negative")
-            } label: {
-                Image(systemName: "hand.thumbsdown.fill")
-                    .font(.system(size: 16))
-                    .foregroundStyle(
-                        feedbackRating == "negative"
-                            ? Color.red
-                            : Color.secondary
-                    )
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("Not helpful")
-
-            // Share
-            Button {
-                // TODO: share message text via UIActivityViewController
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 16))
-                    .foregroundStyle(Color.secondary)
-                    .frame(width: 32, height: 32)
-            }
-            .accessibilityLabel("Share")
-
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Blinking Cursor
-
-/// A small pulsing rectangle that indicates the stream is still producing tokens.
-private struct BlinkingCursor: View {
-
-    @State private var isVisible = true
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: 1)
-            .fill(Color(red: 0.106, green: 0.420, blue: 0.227))
-            .frame(width: 8, height: 16)
-            .opacity(isVisible ? 1.0 : 0.0)
-            .animation(
-                .easeInOut(duration: 0.5).repeatForever(autoreverses: true),
-                value: isVisible
-            )
-            .onAppear { isVisible = false }
-            .padding(.top, 2)
-    }
-}
-
-// MARK: - FlowLayout
-
-/// A horizontal wrapping layout (replacement for Compose's FlowRow).
-///
-/// Lays children out left-to-right, wrapping to the next line when
-/// the current line exceeds the available width.
 private struct FlowLayout: Layout {
-
     var spacing: CGFloat
     var lineSpacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        return result.size
+        arrangeSubviews(proposal: proposal, subviews: subviews).size
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                proposal: .unspecified
-            )
+        for (i, pos) in result.positions.enumerated() {
+            subviews[i].place(at: CGPoint(x: bounds.minX + pos.x, y: bounds.minY + pos.y), proposal: .unspecified)
         }
     }
 
-    private struct ArrangementResult {
-        let size: CGSize
-        let positions: [CGPoint]
-    }
+    private struct Result { let size: CGSize; let positions: [CGPoint] }
 
-    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> ArrangementResult {
-        let maxWidth = proposal.width ?? .infinity
+    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> Result {
+        let maxW = proposal.width ?? .infinity
         var positions: [CGPoint] = []
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var lineHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-
-            if currentX + size.width > maxWidth && currentX > 0 {
-                // Wrap to next line
-                currentX = 0
-                currentY += lineHeight + lineSpacing
-                lineHeight = 0
-            }
-
-            positions.append(CGPoint(x: currentX, y: currentY))
-            lineHeight = max(lineHeight, size.height)
-            currentX += size.width + spacing
-            totalWidth = max(totalWidth, currentX - spacing)
+        var x: CGFloat = 0, y: CGFloat = 0, lineH: CGFloat = 0, totalW: CGFloat = 0
+        for sv in subviews {
+            let s = sv.sizeThatFits(.unspecified)
+            if x + s.width > maxW && x > 0 { x = 0; y += lineH + lineSpacing; lineH = 0 }
+            positions.append(CGPoint(x: x, y: y))
+            lineH = max(lineH, s.height)
+            x += s.width + spacing
+            totalW = max(totalW, x - spacing)
         }
-
-        let totalHeight = currentY + lineHeight
-        return ArrangementResult(
-            size: CGSize(width: totalWidth, height: totalHeight),
-            positions: positions
-        )
+        return Result(size: CGSize(width: totalW, height: y + lineH), positions: positions)
     }
 }

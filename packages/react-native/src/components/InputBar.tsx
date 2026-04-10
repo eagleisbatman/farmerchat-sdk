@@ -1,8 +1,23 @@
 import React, { useState, useCallback } from 'react';
-import { View, TextInput, Pressable, Text, StyleSheet, Platform } from 'react-native';
+import {
+  View,
+  TextInput,
+  Pressable,
+  Text,
+  StyleSheet,
+  Platform,
+  Image,
+} from 'react-native';
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+const PRIMARY_GREEN  = '#2E7D32';
+const SURFACE_COLOR  = '#F5F5F5';
+const WHITE          = '#FFFFFF';
+const TEXT_SECONDARY = '#757575';
+const DIVIDER_COLOR  = '#E0E0E0';
 
 interface InputBarProps {
-  onSend: (text: string) => void;
+  onSend: (text: string, imageData?: string) => void;
   onVoicePress?: () => void;
   onCameraPress?: () => void;
   voiceEnabled?: boolean;
@@ -11,6 +26,13 @@ interface InputBarProps {
   placeholder?: string;
 }
 
+/**
+ * Chat input bar — light flat theme.
+ *
+ * Layout: [Camera 36px circle] [TextInput flex:1 20px radius] [Mic | Send 40px circle]
+ * Padding: h 12, top 8, bottom 4(iOS)/8(Android).
+ * Send button bg: #2E7D32. Mic/Camera bg: #F5F5F5.
+ */
 export const InputBar = React.memo(function InputBar({
   onSend,
   onVoicePress,
@@ -18,159 +40,157 @@ export const InputBar = React.memo(function InputBar({
   voiceEnabled = false,
   imageEnabled = false,
   isDisabled = false,
-  placeholder = 'Ask about your crops...',
+  placeholder = 'Ask about your crops…',
 }: InputBarProps) {
   const [text, setText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const hasText = text.trim().length > 0;
+  const canSend = (hasText || !!selectedImage) && !isDisabled;
 
   const handleSend = useCallback(() => {
     try {
       const trimmed = text.trim();
-      if (trimmed.length === 0) return;
-      onSend(trimmed);
+      if (!trimmed && !selectedImage) return;
+      onSend(trimmed, selectedImage ?? undefined);
       setText('');
-    } catch {
-      // SDK must never crash the host app
-    }
-  }, [text, onSend]);
+      setSelectedImage(null);
+    } catch { /* no-op */ }
+  }, [text, selectedImage, onSend]);
 
-  const handleVoicePress = useCallback(() => {
-    try {
-      onVoicePress?.();
-    } catch {
-      // SDK must never crash the host app
-    }
+  const handleVoice = useCallback(() => {
+    try { onVoicePress?.(); } catch { /* no-op */ }
   }, [onVoicePress]);
 
-  const handleCameraPress = useCallback(() => {
-    try {
-      onCameraPress?.();
-    } catch {
-      // SDK must never crash the host app
-    }
+  const handleCamera = useCallback(() => {
+    try { onCameraPress?.(); } catch { /* no-op */ }
   }, [onCameraPress]);
-
-  const hasText = text.trim().length > 0;
 
   return (
     <View style={styles.container}>
-      {imageEnabled && (
-        <Pressable
-          onPress={handleCameraPress}
-          disabled={isDisabled}
-          style={({ pressed }) => [
-            styles.iconButton,
-            pressed && styles.buttonPressed,
-            isDisabled && styles.buttonDisabled,
-          ]}
-          accessibilityLabel="Take photo"
-          accessibilityRole="button"
-        >
-          <Text style={styles.iconText}>{'📷'}</Text>
-        </Pressable>
+      {/* Image preview */}
+      {selectedImage && (
+        <View style={styles.imagePreviewRow}>
+          <View style={styles.imagePreviewContainer}>
+            <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
+            <Pressable style={styles.imageRemoveBtn} onPress={() => setSelectedImage(null)}>
+              <Text style={styles.imageRemoveText}>✕</Text>
+            </Pressable>
+          </View>
+        </View>
       )}
 
-      <TextInput
-        style={[styles.input, isDisabled && styles.inputDisabled]}
-        value={text}
-        onChangeText={setText}
-        placeholder={placeholder}
-        placeholderTextColor="#999"
-        multiline
-        maxLength={2000}
-        editable={!isDisabled}
-        returnKeyType={Platform.OS === 'ios' ? 'default' : 'send'}
-        blurOnSubmit={false}
-        accessibilityLabel="Message input"
-      />
+      <View style={styles.inputRow}>
+        {/* Camera icon button */}
+        {imageEnabled && (
+          <Pressable
+            onPress={handleCamera}
+            disabled={isDisabled}
+            style={[styles.iconBtn, isDisabled && styles.disabled]}
+            accessibilityLabel="Take photo"
+            accessibilityRole="button"
+          >
+            <Text style={styles.iconText}>📷</Text>
+          </Pressable>
+        )}
 
-      {hasText ? (
-        <Pressable
-          onPress={handleSend}
-          disabled={isDisabled}
-          style={({ pressed }) => [
-            styles.sendButton,
-            pressed && styles.sendButtonPressed,
-            isDisabled && styles.buttonDisabled,
-          ]}
-          accessibilityLabel="Send message"
-          accessibilityRole="button"
-        >
-          <Text style={styles.sendButtonText}>{'↑'}</Text>
-        </Pressable>
-      ) : voiceEnabled ? (
-        <Pressable
-          onPress={handleVoicePress}
-          disabled={isDisabled}
-          style={({ pressed }) => [
-            styles.iconButton,
-            pressed && styles.buttonPressed,
-            isDisabled && styles.buttonDisabled,
-          ]}
-          accessibilityLabel="Voice input"
-          accessibilityRole="button"
-        >
-          <Text style={styles.iconText}>{'🎤'}</Text>
-        </Pressable>
-      ) : null}
+        {/* Text input — flex:1, #F5F5F5 bg, 20px radius pill */}
+        <TextInput
+          style={[styles.input, isDisabled && styles.inputDisabled]}
+          value={text}
+          onChangeText={setText}
+          placeholder={placeholder}
+          placeholderTextColor={TEXT_SECONDARY}
+          multiline
+          maxLength={2000}
+          editable={!isDisabled}
+          returnKeyType={Platform.OS === 'ios' ? 'default' : 'send'}
+          blurOnSubmit={false}
+          accessibilityLabel="Message input"
+        />
+
+        {/* Send or Mic */}
+        {canSend ? (
+          <Pressable
+            onPress={handleSend}
+            disabled={!canSend}
+            style={({ pressed }) => [
+              styles.sendBtn,
+              pressed && styles.sendBtnPressed,
+              !canSend && styles.disabled,
+            ]}
+            accessibilityLabel="Send message"
+            accessibilityRole="button"
+          >
+            <Text style={styles.sendBtnText}>↑</Text>
+          </Pressable>
+        ) : voiceEnabled ? (
+          <Pressable
+            onPress={handleVoice}
+            disabled={isDisabled}
+            style={[styles.iconBtn, isDisabled && styles.disabled]}
+            accessibilityLabel="Voice input"
+            accessibilityRole="button"
+          >
+            <Text style={styles.iconText}>🎤</Text>
+          </Pressable>
+        ) : null}
+      </View>
     </View>
   );
 });
 
 const styles = StyleSheet.create({
   container: {
+    backgroundColor: WHITE,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: DIVIDER_COLOR,
+    paddingBottom: Platform.OS === 'ios' ? 4 : 8,
+  },
+  imagePreviewRow: { paddingHorizontal: 12, paddingTop: 8 },
+  imagePreviewContainer: { position: 'relative', alignSelf: 'flex-start' },
+  imagePreview: {
+    width: 80, height: 60, borderRadius: 8,
+  },
+  imageRemoveBtn: {
+    position: 'absolute', top: -8, right: -8,
+    width: 20, height: 20, borderRadius: 10,
+    backgroundColor: '#757575',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  imageRemoveText: { color: WHITE, fontSize: 10, fontWeight: '700' },
+  inputRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E5E5',
-    backgroundColor: '#FFFFFF',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    minHeight: 44,
   },
   input: {
     flex: 1,
     minHeight: 40,
     maxHeight: 120,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginHorizontal: 6,
+    paddingVertical: 10,
     borderRadius: 20,
-    backgroundColor: '#F5F5F5',
-    fontSize: 16,
+    backgroundColor: SURFACE_COLOR,
+    fontSize: 15,
     color: '#1A1A1A',
   },
-  inputDisabled: {
-    opacity: 0.5,
+  inputDisabled: { opacity: 0.5 },
+  iconBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: SURFACE_COLOR,
+    alignItems: 'center', justifyContent: 'center',
   },
-  iconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
+  iconText: { fontSize: 18 },
+  sendBtn: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: PRIMARY_GREEN,
+    alignItems: 'center', justifyContent: 'center',
   },
-  iconText: {
-    fontSize: 20,
-  },
-  sendButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1B6B3A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  sendButtonText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  sendButtonPressed: {
-    backgroundColor: '#155A2F',
-  },
-  buttonPressed: {
-    opacity: 0.6,
-  },
-  buttonDisabled: {
-    opacity: 0.4,
-  },
+  sendBtnPressed: { backgroundColor: '#1B5E20' },
+  sendBtnText: { color: WHITE, fontSize: 20, fontWeight: '700', lineHeight: 24 },
+  disabled: { opacity: 0.4 },
 });

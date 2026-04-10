@@ -1,27 +1,27 @@
 import SwiftUI
 
-/// Resolve the primary brand color from config, with a FarmerChat green fallback.
+// MARK: - Color / corner helpers
+
+private let sdkPrimary = Color(red: 0.18, green: 0.49, blue: 0.20) // #2E7D32
+
 private var primaryColor: Color {
-    let config = FarmerChat.getConfig()
-    return colorFromHex(config.theme?.primaryColor ?? "#1B6B3A")
+    colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32")
 }
 
-/// Default corner radius used across the SDK.
 private var cardCornerRadius: Double {
     FarmerChat.getConfig().theme?.cornerRadius ?? 12
 }
 
 // MARK: - ChatView
 
-/// Main chat screen view.
+/// Main chat screen — light system theme.
 ///
-/// Layout: ChatTopBar + ConnectivityBanner + Messages/Starters + StreamingIndicator/ErrorBanner + InputBar
+/// Layout: ChatTopBar → ConnectivityBanner → Messages / EmptyState → InputBar.
 struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
 
-    /// Whether the input bar should be disabled.
     private var isInputDisabled: Bool {
         if case .sending = viewModel.chatState { return true }
         return false
@@ -36,390 +36,304 @@ struct ChatView: View {
             }
 
             ZStack {
-                Color(white: 0.95)
-                    .ignoresSafeArea(edges: .bottom)
+                Color(.systemBackground).ignoresSafeArea(edges: .bottom)
 
                 if viewModel.messages.isEmpty {
-                    StarterQuestionsArea(viewModel: viewModel)
+                    EmptyStateArea()
                 } else {
                     MessageList(viewModel: viewModel)
                 }
             }
 
-            VStack(spacing: 0) {
-                if case .sending = viewModel.chatState {
-                    StreamingIndicator(viewModel: viewModel)
-                }
-
-                if case let .error(_, message, retryable) = viewModel.chatState {
-                    ErrorBanner(
-                        message: message,
-                        retryable: retryable,
-                        onRetry: { viewModel.retryLastQuery() }
-                    )
-                }
-
-                // Follow-up chip row above input bar
-                FollowUpRow(viewModel: viewModel, isDisabled: isInputDisabled)
-
-                InputBar(
-                    enabled: !isInputDisabled && viewModel.isConnected,
-                    onSend: { text in
-                        viewModel.sendQuery(text: text)
-                    },
-                    voiceEnabled: config.voiceInputEnabled,
-                    cameraEnabled: config.imageInputEnabled
+            // Error banner
+            if case let .error(_, message, retryable) = viewModel.chatState {
+                InlineErrorBanner(
+                    message: message,
+                    retryable: retryable,
+                    onRetry: { viewModel.retryLastQuery() }
                 )
             }
+
+            InputBar(
+                enabled:      !isInputDisabled && viewModel.isConnected,
+                onSend:       { text in viewModel.sendQuery(text: text) },
+                voiceEnabled: config.voiceInputEnabled,
+                cameraEnabled: config.imageInputEnabled
+            )
         }
+        .background(Color(.systemBackground))
     }
 }
 
 // MARK: - ChatTopBar
 
-/// Custom toolbar row with title, history, and profile buttons.
 private struct ChatTopBar: View {
     @ObservedObject var viewModel: ChatViewModel
-
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(config.headerTitle)
-                .font(.headline)
-                .foregroundColor(.white)
-                .lineLimit(1)
+        HStack(spacing: 10) {
+            // Logo circle 32pt with leaf icon
+            ZStack {
+                Circle()
+                    .fill(primaryColor)
+                    .frame(width: 32, height: 32)
+                Image(systemName: "leaf.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
+            }
+
+            // Title column
+            VStack(alignment: .leading, spacing: 2) {
+                Text(config.headerTitle)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                Text("AI Farm Assistant")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
 
             Spacer()
 
+            // History icon
             if config.historyEnabled {
                 Button {
                     viewModel.navigateTo(.history)
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 20))
-                        .foregroundColor(.white)
+                        .foregroundColor(primaryColor)
                 }
                 .accessibilityLabel("Chat history")
             }
-
-            if config.profileEnabled {
-                Button {
-                    viewModel.navigateTo(.profile)
-                } label: {
-                    Image(systemName: "person.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(.white)
-                }
-                .accessibilityLabel("Settings")
-            }
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(primaryColor)
-    }
-}
-
-// MARK: - Starter Questions Area
-
-/// Shown when the message list is empty. Displays a welcome prompt.
-private struct StarterQuestionsArea: View {
-    @ObservedObject var viewModel: ChatViewModel
-
-    var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Spacer().frame(height: 40)
-
-                Image(systemName: "leaf.fill")
-                    .font(.system(size: 48))
-                    .foregroundColor(primaryColor.opacity(0.6))
-
-                Text("Ask a question about farming to get started")
-                    .font(.body)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-
-                Spacer()
-            }
-            .frame(maxWidth: .infinity)
-        }
-    }
-}
-
-// MARK: - ChatFlowLayout
-
-/// A custom layout that wraps children into rows, similar to a CSS flexbox wrap.
-/// Available on iOS 16+ via the `Layout` protocol.
-private struct ChatFlowLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        return result.size
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrangeSubviews(proposal: proposal, subviews: subviews)
-        for (index, position) in result.positions.enumerated() {
-            subviews[index].place(
-                at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
-                proposal: .unspecified
-            )
-        }
-    }
-
-    private struct ArrangeResult {
-        var size: CGSize
-        var positions: [CGPoint]
-    }
-
-    private func arrangeSubviews(proposal: ProposedViewSize, subviews: Subviews) -> ArrangeResult {
-        let maxWidth = proposal.width ?? .infinity
-        var positions: [CGPoint] = []
-        var currentX: CGFloat = 0
-        var currentY: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var totalWidth: CGFloat = 0
-
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-
-            if currentX + size.width > maxWidth, currentX > 0 {
-                currentX = 0
-                currentY += rowHeight + spacing
-                rowHeight = 0
-            }
-
-            positions.append(CGPoint(x: currentX, y: currentY))
-            rowHeight = max(rowHeight, size.height)
-            currentX += size.width + spacing
-            totalWidth = max(totalWidth, currentX - spacing)
-        }
-
-        let totalHeight = currentY + rowHeight
-        return ArrangeResult(
-            size: CGSize(width: totalWidth, height: totalHeight),
-            positions: positions
+        .padding(.vertical, 10)
+        .background(Color(.systemBackground))
+        .overlay(
+            Divider(), alignment: .bottom
         )
     }
 }
 
-// MARK: - Message List
+// MARK: - Empty state
 
-/// Scrollable list of chat messages with auto-scroll to bottom.
+private struct EmptyStateArea: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer()
+            Image(systemName: "leaf.fill")
+                .font(.system(size: 48))
+                .foregroundColor(primaryColor.opacity(0.5))
+            Text("Ask a question about farming to get started")
+                .font(.body)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+            Spacer()
+        }
+    }
+}
+
+// MARK: - Message list
+
 private struct MessageList: View {
     @ObservedObject var viewModel: ChatViewModel
-
-    /// Whether the last message is currently being streamed (always false — REST API).
-    private var isLastMessageStreaming: Bool { false }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: 0) {
                     ForEach(viewModel.messages) { message in
                         if message.role == "user" {
                             UserBubble(message: message)
                                 .id(message.id)
                         } else {
-                            let isThisStreaming = isLastMessageStreaming
-                                && message.id == viewModel.messages.last?.id
-
                             ResponseCard(
                                 message: message,
-                                isStreaming: isThisStreaming,
-                                onFollowUpClick: { text in
-                                    viewModel.sendFollowUp(text: text)
-                                },
+                                isStreaming: false,
+                                onFollowUpClick: { text in viewModel.sendFollowUp(text: text) },
                                 onFeedback: { _ in }
                             )
                             .id(message.id)
                         }
                     }
 
-                    // Invisible anchor for auto-scroll
-                    Color.clear
-                        .frame(height: 1)
-                        .id("chat_bottom_anchor")
+                    // Typing indicator when sending
+                    if case .sending = viewModel.chatState {
+                        LoadingBubble()
+                    }
+
+                    Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
             .onChange(of: viewModel.messages.count) { _ in
-                withAnimation(.easeOut(duration: 0.3)) {
-                    proxy.scrollTo("chat_bottom_anchor", anchor: .bottom)
+                withAnimation(.easeOut(duration: 0.25)) {
+                    proxy.scrollTo("bottom", anchor: .bottom)
                 }
             }
             .onAppear {
-                proxy.scrollTo("chat_bottom_anchor", anchor: .bottom)
+                proxy.scrollTo("bottom", anchor: .bottom)
             }
         }
     }
-
 }
 
-// MARK: - UserBubble
+// MARK: - User bubble
 
-/// Right-aligned green bubble for a user message.
 private struct UserBubble: View {
     let message: ChatViewModel.ChatMessage
 
     var body: some View {
         HStack {
             Spacer(minLength: 60)
-
             VStack(alignment: .trailing, spacing: 4) {
                 Text(message.text)
-                    .font(.body)
+                    .font(.system(size: 15))
                     .foregroundColor(.white)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
-                        RoundedRectangle(cornerRadius: cardCornerRadius)
-                            .fill(primaryColor)
+                        // #2E7D32 — user bubble, bottom-right 4pt
+                        RoundedCornerShape2(
+                            topLeft: 18, topRight: 18,
+                            bottomLeft: 18, bottomRight: 4
+                        )
+                        .fill(Color(red: 0.18, green: 0.49, blue: 0.20))
                     )
-
+                    .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
                 Text(message.timestamp, style: .time)
-                    .font(.caption2)
+                    .font(.system(size: 11))
                     .foregroundColor(.secondary)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Follow-Up Row
+// MARK: - Loading bubble (3 animated dots)
 
-/// Horizontal scroll of follow-up suggestion chips displayed above the input bar.
-private struct FollowUpRow: View {
-    @ObservedObject var viewModel: ChatViewModel
-    let isDisabled: Bool
+struct LoadingBubble: View {
+    @State private var scale1: CGFloat = 0.5
+    @State private var scale2: CGFloat = 0.5
+    @State private var scale3: CGFloat = 0.5
 
     var body: some View {
-        if let lastAssistant = viewModel.messages.last(where: { $0.role == "assistant" }),
-           !lastAssistant.followUps.isEmpty,
-           !isDisabled {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(lastAssistant.followUps, id: \.question) { followUp in
-                        Button {
-                            viewModel.sendFollowUp(text: followUp.question, followUpId: followUp.id)
-                        } label: {
-                            Text(followUp.question)
-                                .font(.caption)
-                                .foregroundColor(primaryColor)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .fill(primaryColor.opacity(0.08))
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(primaryColor.opacity(0.3), lineWidth: 1)
-                                )
-                        }
-                        .lineLimit(1)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+        HStack(alignment: .top, spacing: 8) {
+            // Avatar
+            ZStack {
+                Circle().fill(Color(red: 0.18, green: 0.49, blue: 0.20)).frame(width: 32, height: 32)
+                Image(systemName: "leaf.circle.fill").font(.system(size: 18)).foregroundColor(.white)
             }
-        }
-    }
-}
 
-// MARK: - StreamingIndicator
-
-/// Pulsing indicator shown during response generation.
-private struct StreamingIndicator: View {
-    @ObservedObject var viewModel: ChatViewModel
-    @State private var dotOpacity: Double = 0.3
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(primaryColor)
-                .frame(width: 8, height: 8)
-                .opacity(dotOpacity)
-                .onAppear {
-                    withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
-                        dotOpacity = 1.0
-                    }
-                }
-
-            Text("Generating response...")
-                .font(.caption)
-                .foregroundColor(.secondary)
+            // Dots bubble
+            HStack(spacing: 6) {
+                dotView(scale: $scale1)
+                dotView(scale: $scale2)
+                dotView(scale: $scale3)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color(.systemGray6))
+            .clipShape(
+                RoundedCornerShape2(topLeft: 4, topRight: 18, bottomLeft: 18, bottomRight: 18)
+            )
 
             Spacer()
-
-            Button {
-                viewModel.stopStream()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .font(.system(size: 16))
-                    .foregroundColor(.white)
-                    .frame(width: 32, height: 32)
-                    .background(Color.gray.opacity(0.5))
-                    .clipShape(Circle())
-            }
-            .accessibilityLabel("Stop generating")
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(Color.white)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+        .onAppear {
+            animate(delay: 0.0, scale: $scale1)
+            animate(delay: 0.2, scale: $scale2)
+            animate(delay: 0.4, scale: $scale3)
+        }
+    }
+
+    private func dotView(scale: Binding<CGFloat>) -> some View {
+        Circle()
+            .fill(Color(.systemGray3))
+            .frame(width: 8, height: 8)
+            .scaleEffect(scale.wrappedValue)
+    }
+
+    private func animate(delay: Double, scale: Binding<CGFloat>) {
+        withAnimation(
+            Animation.easeInOut(duration: 0.5)
+                .repeatForever(autoreverses: true)
+                .delay(delay)
+        ) {
+            scale.wrappedValue = 1.0
+        }
     }
 }
 
-// MARK: - ErrorBanner
+// MARK: - Inline error banner
 
-/// Error card with a warning icon, message, and optional retry button.
-private struct ErrorBanner: View {
+private struct InlineErrorBanner: View {
     let message: String
     let retryable: Bool
     let onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 20))
                 .foregroundColor(.orange)
-
             Text(message)
                 .font(.subheadline)
                 .foregroundColor(.primary)
                 .lineLimit(2)
-
             Spacer()
-
             if retryable {
-                Button {
-                    onRetry()
-                } label: {
-                    Text("Retry")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(primaryColor)
-                        )
-                }
+                Button("Retry", action: onRetry)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(primaryColor)
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: cardCornerRadius)
-                .fill(Color.orange.opacity(0.08))
-        )
+        .background(Color.orange.opacity(0.08))
         .overlay(
             RoundedRectangle(cornerRadius: cardCornerRadius)
                 .stroke(Color.orange.opacity(0.3), lineWidth: 1)
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
+    }
+}
+
+// MARK: - Custom corner radius shape
+
+/// Allows different corner radii per corner (SwiftUI workaround).
+struct RoundedCornerShape2: Shape {
+    var topLeft: CGFloat
+    var topRight: CGFloat
+    var bottomLeft: CGFloat
+    var bottomRight: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let tl = min(topLeft, min(rect.width, rect.height) / 2)
+        let tr = min(topRight, min(rect.width, rect.height) / 2)
+        let bl = min(bottomLeft, min(rect.width, rect.height) / 2)
+        let br = min(bottomRight, min(rect.width, rect.height) / 2)
+
+        path.move(to: CGPoint(x: rect.minX + tl, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - tr, y: rect.minY))
+        path.addArc(center: CGPoint(x: rect.maxX - tr, y: rect.minY + tr), radius: tr, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - br))
+        path.addArc(center: CGPoint(x: rect.maxX - br, y: rect.maxY - br), radius: br, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX + bl, y: rect.maxY))
+        path.addArc(center: CGPoint(x: rect.minX + bl, y: rect.maxY - bl), radius: bl, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + tl))
+        path.addArc(center: CGPoint(x: rect.minX + tl, y: rect.minY + tl), radius: tl, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.closeSubpath()
+        return path
     }
 }
