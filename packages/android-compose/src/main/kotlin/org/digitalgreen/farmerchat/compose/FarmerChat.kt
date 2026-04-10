@@ -3,81 +3,112 @@ package org.digitalgreen.farmerchat.compose
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.compose.crash.CrashBridge
 import org.digitalgreen.farmerchat.compose.network.ApiClient
 import org.digitalgreen.farmerchat.compose.network.ConnectivityMonitor
+import org.digitalgreen.farmerchat.compose.network.DeviceInfoProvider
+import org.digitalgreen.farmerchat.compose.network.GuestApiClient
+import org.digitalgreen.farmerchat.compose.network.TokenStore
 
 /**
  * Main entry point for the FarmerChat Compose SDK.
- * Initialize once in your Application.onCreate().
+ *
+ * Call [initialize] once in `Application.onCreate()`:
+ * ```kotlin
+ * FarmerChat.initialize(
+ *     context = this,
+ *     config = FarmerChatConfig(
+ *         baseUrl   = "https://farmerchat.farmstack.co/mobile-app-dev",
+ *         sdkApiKey = "fc_test_<your_key>"
+ *     )
+ * )
+ * ```
  */
 object FarmerChat {
 
     private const val TAG = "FarmerChat"
-    internal const val SDK_VERSION = "0.0.0"
+    internal const val SDK_VERSION = "1.0.0"
 
     private var config: FarmerChatConfig? = null
-    private var apiKey: String? = null
     private var appContext: Context? = null
     @Volatile private var isInitialized = false
     private var sessionId: String? = null
+
     internal var apiClient: ApiClient? = null
     internal var connectivityMonitor: ConnectivityMonitor? = null
     internal var crashBridge: CrashBridge? = null
     internal var eventCallback: ((FarmerChatEvent) -> Unit)? = null
 
+    private val sdkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // ── Initialization ────────────────────────────────────────────────────────
+
     /**
-     * Initialize the SDK. Call once in Application.onCreate().
+     * Initialize the SDK. Idempotent — safe to call more than once.
      *
-     * This method is idempotent — calling it more than once is a no-op.
-     * All work is wrapped in try-catch so SDK initialization can never crash the host app.
+     * On first call this will:
+     * 1. Build the device ID and `Device-Info` header.
+     * 2. Create the [ApiClient].
+     * 3. Launch a background coroutine to call `initialize_user` (guest auth).
      *
      * @param context Application context
-     * @param apiKey Partner API key issued by Digital Green
-     * @param config Optional SDK configuration
+     * @param config  SDK configuration (must include a valid [FarmerChatConfig.sdkApiKey])
      */
-    fun initialize(
-        context: Context,
-        apiKey: String,
-        config: FarmerChatConfig = FarmerChatConfig(),
-    ) {
-        if (isInitialized) return // Idempotent
+    fun initialize(context: Context, config: FarmerChatConfig = FarmerChatConfig()) {
+        if (isInitialized) return
         synchronized(this) {
-            if (isInitialized) return // Double-check under lock
+            if (isInitialized) return
             try {
-                this.appContext = context.applicationContext
-                this.apiKey = apiKey
+                val appCtx = context.applicationContext
+                this.appContext = appCtx
                 this.config = config
                 this.sessionId = java.util.UUID.randomUUID().toString()
+
+                // Stable device ID (used in Device-Info header and guest init)
+                val deviceId = DeviceInfoProvider.getStableDeviceId(appCtx)
+                TokenStore.setDeviceId(deviceId)
+
+                val deviceInfo = DeviceInfoProvider.buildHeader(appCtx)
+
                 this.apiClient = ApiClient(
-                    config.baseUrl,
-                    apiKey,
-                    config.requestTimeoutMs,
-                    config.sseTimeoutMs,
+                    baseUrl = config.baseUrl,
+                    sdkApiKey = config.sdkApiKey,
+                    deviceInfo = deviceInfo,
+                    timeoutMs = config.requestTimeoutMs,
                 )
-                this.connectivityMonitor = ConnectivityMonitor(context.applicationContext).also { it.start() }
+
+                this.connectivityMonitor = ConnectivityMonitor(appCtx).also { it.start() }
                 this.crashBridge = CrashBridge().also { it.detect() }
                 this.isInitialized = true
+
+                // Background: ensure guest tokens are available before first chat
+                sdkScope.launch {
+                    try {
+                        if (!TokenStore.isInitialized) {
+                            GuestApiClient(config.baseUrl).initializeUser(deviceId)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Background guest init failed (will retry on first chat): ${e.message}")
+                    }
+                }
             } catch (e: Exception) {
-                // SDK init must never crash host app
                 Log.e(TAG, "Initialization failed", e)
             }
         }
     }
 
-    /**
-     * Check if the SDK has been initialized.
-     */
+    // ── Public API ────────────────────────────────────────────────────────────
+
+    /** Returns `true` if the SDK has been initialized. */
     fun isInitialized(): Boolean = isInitialized
 
     /**
      * Launch the full-screen FarmerChat UI.
-     *
-     * Requires [initialize] to have been called first. Safe to call from any context —
-     * all errors are caught internally and the SDK will never crash the host app.
-     *
-     * @param context Any Context (Activity, Application, etc.). The chat screen opens as
-     *   a new Activity on top of the current task.
+     * [initialize] must be called first.
      */
     fun presentChat(context: Context) {
         if (!isInitialized) {
@@ -93,27 +124,18 @@ object FarmerChat {
         }
     }
 
-    /**
-     * Returns the current SDK configuration, or defaults if not yet initialized.
-     */
+    /** Returns the current SDK configuration, or defaults if not initialized. */
     fun getConfig(): FarmerChatConfig = config ?: FarmerChatConfig()
 
-    /**
-     * Returns the current session ID, or empty string if not yet initialized.
-     */
+    /** Returns the session ID generated at [initialize] time. */
     fun getSessionId(): String = sessionId ?: ""
 
-    /**
-     * Returns the application context. For SDK internal use only.
-     *
-     * @throws IllegalStateException if the SDK has not been initialized.
-     */
+    /** Returns the application context. For SDK internal use only. */
     internal fun getContext(): Context = requireNotNull(appContext) { "FarmerChat not initialized" }
 
     /**
-     * Set event callback for SDK lifecycle events.
-     *
-     * @param callback Invoked on the main thread for each [FarmerChatEvent].
+     * Register a callback for SDK lifecycle events.
+     * The callback is invoked on the thread where the event originates.
      */
     fun setEventCallback(callback: (FarmerChatEvent) -> Unit) {
         this.eventCallback = callback
@@ -127,11 +149,11 @@ object FarmerChat {
         synchronized(this) {
             try {
                 connectivityMonitor?.stop()
+                TokenStore.clear()
                 apiClient = null
                 connectivityMonitor = null
                 crashBridge = null
                 config = null
-                apiKey = null
                 appContext = null
                 sessionId = null
                 eventCallback = null

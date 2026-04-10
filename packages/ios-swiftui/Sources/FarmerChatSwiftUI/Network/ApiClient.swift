@@ -3,433 +3,375 @@ import os
 
 /// HTTP client using `URLSession` (no Alamofire).
 ///
-/// All network calls use Swift structured concurrency (`async`/`await`).
-/// JSON is parsed with `JSONSerialization` — no Codable overhead for partial/streaming data.
+/// Handles:
+/// - Auth headers on every request (Authorization: Bearer, X-SDK-Key, Build-Version, Device-Info)
+/// - Automatic token refresh on HTTP 401 via `TokenRefreshHandler`
+/// - All FarmerChat REST API endpoints
 ///
-/// Every public method is wrapped in do-catch so that a network failure never propagates
-/// an unchecked exception to the host app.
+/// Every public method is wrapped in do-catch so network failures never propagate
+/// unchecked exceptions to the host app.
 internal final class ApiClient {
 
     // MARK: - Constants
 
-    private static let sdkVersion = "0.0.0"
-    private static let logger = Logger(
-        subsystem: "org.digitalgreen.farmerchat",
-        category: "ApiClient"
-    )
+    private static let logger = Logger(subsystem: "org.digitalgreen.farmerchat", category: "ApiClient")
 
-    // API endpoint paths (mirrors core/src/api/endpoints.ts)
     private enum Endpoint {
-        static let chatSend    = "/v1/chat/send"
-        static let feedback    = "/v1/chat/feedback"
-        static let history     = "/v1/chat/history"
-        static let languages   = "/v1/config/languages"
-        static let starters    = "/v1/config/starters"
-        static let tts         = "/v1/chat/tts"
-        static let onboarding  = "/v1/user/onboarding"
+        static let newConversation     = "api/chat/new_conversation/"
+        static let textPrompt          = "api/chat/get_answer_for_text_query/"
+        static let imageAnalysis       = "api/chat/image_analysis/"
+        static let followUpQuestions   = "api/chat/follow_up_questions/"
+        static let followUpClick       = "api/chat/follow_up_question_click/"
+        static let synthesiseAudio     = "api/chat/synthesise_audio/"
+        static let transcribeAudio     = "api/chat/transcribe_audio/"
+        static let chatHistory         = "api/chat/conversation_chat_history/"
+        static let conversationList    = "api/chat/conversation_list/"
     }
 
     // MARK: - Properties
 
     private let baseURL: URL
-    private let apiKey: String
-    private let requestTimeoutMs: Int
-    private let sseTimeoutMs: Int
+    private let sdkApiKey: String
+    private let deviceInfo: String
+    private let timeoutInterval: TimeInterval
     private let session: URLSession
+    private let refreshHandler: TokenRefreshHandler
+
+    private let decoder: JSONDecoder = {
+        let d = JSONDecoder()
+        d.keyDecodingStrategy = .convertFromSnakeCase
+        return d
+    }()
+    private let encoder: JSONEncoder = {
+        let e = JSONEncoder()
+        e.keyEncodingStrategy = .convertToSnakeCase
+        return e
+    }()
 
     // MARK: - Init
 
-    /// Create an API client.
-    ///
-    /// - Parameters:
-    ///   - baseURL: API base URL.
-    ///   - apiKey: Partner API key for authentication.
-    ///   - requestTimeoutMs: Timeout for standard HTTP requests in milliseconds.
-    ///   - sseTimeoutMs: Timeout for SSE streaming connections in milliseconds.
     init(
-        baseURL: URL,
-        apiKey: String,
-        requestTimeoutMs: Int = 15_000,
-        sseTimeoutMs: Int = 30_000
+        baseUrl: String,
+        sdkApiKey: String,
+        deviceInfo: String,
+        timeoutMs: Int = 15_000
     ) {
-        self.baseURL = baseURL
-        self.apiKey = apiKey
-        self.requestTimeoutMs = requestTimeoutMs
-        self.sseTimeoutMs = sseTimeoutMs
-
-        let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = TimeInterval(requestTimeoutMs) / 1_000.0
-        config.timeoutIntervalForResource = TimeInterval(sseTimeoutMs) / 1_000.0
-        config.httpAdditionalHeaders = [
-            "Content-Type": "application/json",
-            "Authorization": "Bearer \(apiKey)",
-            "X-SDK-Version": Self.sdkVersion,
-        ]
-        self.session = URLSession(configuration: config)
+        let trimmed = baseUrl.trimmingCharacters(in: .init(charactersIn: "/"))
+        self.baseURL = URL(string: trimmed)!
+        self.sdkApiKey = sdkApiKey
+        self.deviceInfo = deviceInfo
+        self.timeoutInterval = TimeInterval(timeoutMs) / 1_000.0
+        self.session = URLSession.shared
+        self.refreshHandler = TokenRefreshHandler(baseUrl: trimmed, sdkApiKey: sdkApiKey)
     }
 
-    // MARK: - Default Headers
+    // MARK: - Auth headers
 
-    /// Headers applied to every request.
-    private func defaultHeaders() -> [String: String] {
-        [
-            "Content-Type": "application/json",
-            "Authorization": "Bearer \(apiKey)",
-            "X-SDK-Version": Self.sdkVersion,
-        ]
+    private func applyAuthHeaders(_ request: inout URLRequest, accessToken: String) {
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue(sdkApiKey, forHTTPHeaderField: "X-SDK-Key")
+        request.setValue("v2", forHTTPHeaderField: "Build-Version")
+        request.setValue(deviceInfo, forHTTPHeaderField: "Device-Info")
     }
 
-    // MARK: - Generic HTTP Helpers
+    // MARK: - Generic helpers
 
-    /// Execute a POST request and return the parsed JSON dictionary.
-    ///
-    /// - Parameters:
-    ///   - endpoint: API path (e.g., "/v1/chat/feedback").
-    ///   - body: JSON-serializable dictionary for the request body.
-    /// - Returns: Parsed JSON dictionary from the response body.
-    /// - Throws: `ApiError` on non-2xx status codes, or `URLError` on network failures.
-    private func postJSON(endpoint: String, body: Data) async throws -> [String: Any] {
-        let url = baseURL.appendingPathComponent(endpoint)
-        var request = URLRequest(url: url)
+    /// POST JSON body; handles 401 by refreshing once and retrying.
+    private func postJSON<Req: Encodable, Res: Decodable>(
+        path: String,
+        body: Req,
+        responseType: Res.Type,
+        retry: Bool = false
+    ) async throws -> Res {
+        let url = baseURL.appendingPathComponent(path)
+        let accessToken = await TokenStore.shared.accessToken
+
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "POST"
-        request.timeoutInterval = TimeInterval(requestTimeoutMs) / 1_000.0
-        request.httpBody = body
-        applyHeaders(&request)
+        applyAuthHeaders(&request, accessToken: accessToken)
+        request.httpBody = try encoder.encode(body)
 
         let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ApiError(statusCode: 0, errorBody: "Invalid response type")
+        guard let http = response as? HTTPURLResponse else {
+            throw NetworkError.unknown("Invalid response type")
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw ApiError(statusCode: httpResponse.statusCode, errorBody: errorBody)
+        if http.statusCode == 401 && !retry {
+            let newToken = try await refreshHandler.refreshToken()
+            var retryReq = request
+            retryReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+            retryReq.httpBody = try encoder.encode(body)
+            let (retryData, retryResp) = try await session.data(for: retryReq)
+            guard let retryHttp = retryResp as? HTTPURLResponse,
+                  (200...299).contains(retryHttp.statusCode) else {
+                throw NetworkError.unauthorized
+            }
+            return try decoder.decode(Res.self, from: retryData)
         }
 
-        if data.isEmpty {
-            return [:]
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8)
+            throw NetworkError.serverError(http.statusCode, body)
         }
-
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            return [:]
-        }
-        return json
+        return try decoder.decode(Res.self, from: data)
     }
 
-    /// Execute a GET request and return the raw response body as a `String`.
-    ///
-    /// - Parameters:
-    ///   - endpoint: API path (e.g., "/v1/config/languages").
-    ///   - params: Query parameters appended to the URL.
-    /// - Returns: Raw response body string.
-    /// - Throws: `ApiError` on non-2xx status codes.
-    private func getString(endpoint: String, params: [String: String] = [:]) async throws -> String {
-        var components = URLComponents(
-            url: baseURL.appendingPathComponent(endpoint),
-            resolvingAgainstBaseURL: false
-        )
+    /// GET with query parameters; handles 401 refresh once.
+    private func getJSON<Res: Decodable>(
+        path: String,
+        params: [String: String] = [:],
+        responseType: Res.Type,
+        retry: Bool = false
+    ) async throws -> Res {
+        var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !params.isEmpty {
             components?.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
+        guard let url = components?.url else { throw NetworkError.invalidURL }
 
-        guard let url = components?.url else {
-            throw ApiError(statusCode: 0, errorBody: "Invalid URL for endpoint: \(endpoint)")
-        }
-
-        var request = URLRequest(url: url)
+        let accessToken = await TokenStore.shared.accessToken
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "GET"
-        request.timeoutInterval = TimeInterval(requestTimeoutMs) / 1_000.0
-        applyHeaders(&request)
+        applyAuthHeaders(&request, accessToken: accessToken)
 
         let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ApiError(statusCode: 0, errorBody: "Invalid response type")
+        guard let http = response as? HTTPURLResponse else {
+            throw NetworkError.unknown("Invalid response type")
         }
 
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw ApiError(statusCode: httpResponse.statusCode, errorBody: errorBody)
+        if http.statusCode == 401 && !retry {
+            let newToken = try await refreshHandler.refreshToken()
+            var retryReq = request
+            retryReq.setValue("Bearer \(newToken)", forHTTPHeaderField: "Authorization")
+            let (retryData, retryResp) = try await session.data(for: retryReq)
+            guard let retryHttp = retryResp as? HTTPURLResponse,
+                  (200...299).contains(retryHttp.statusCode) else {
+                throw NetworkError.unauthorized
+            }
+            return try decoder.decode(Res.self, from: retryData)
         }
 
-        return String(data: data, encoding: .utf8) ?? ""
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8)
+            throw NetworkError.serverError(http.statusCode, body)
+        }
+        return try decoder.decode(Res.self, from: data)
     }
 
-    /// Execute a POST request and return the raw response bytes (for binary payloads like audio).
-    ///
-    /// - Parameters:
-    ///   - endpoint: API path (e.g., "/v1/chat/tts").
-    ///   - body: JSON body data.
-    /// - Returns: Raw binary response data.
-    /// - Throws: `ApiError` on non-2xx status codes.
-    private func postBytes(endpoint: String, body: Data) async throws -> Data {
-        let url = baseURL.appendingPathComponent(endpoint)
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.timeoutInterval = TimeInterval(requestTimeoutMs) / 1_000.0
-        request.httpBody = body
-        applyHeaders(&request)
+    // MARK: - Conversation
+
+    struct NewConversationBody: Encodable {
+        let userId: String
+        let contentProviderId: String?
+    }
+
+    func createNewConversation(userId: String, contentProviderId: String?) async throws -> NewConversationResponse {
+        try await postJSON(
+            path: Endpoint.newConversation,
+            body: NewConversationBody(userId: userId, contentProviderId: contentProviderId),
+            responseType: NewConversationResponse.self
+        )
+    }
+
+    // MARK: - Text prompt
+
+    struct TextPromptBody: Encodable {
+        let query: String
+        let conversationId: String
+        let messageId: String
+        let triggeredInputType: String
+        let transcriptionId: String?
+        let useEntityExtraction: Bool
+        let weatherCtaTriggered: Bool
+        let retry: Bool
+    }
+
+    func sendTextPrompt(
+        query: String,
+        conversationId: String,
+        messageId: String,
+        triggeredInputType: String = "text",
+        transcriptionId: String? = nil,
+        useEntityExtraction: Bool = true,
+        weatherCtaTriggered: Bool = false,
+        retry: Bool = false
+    ) async throws -> TextPromptResponse {
+        try await postJSON(
+            path: Endpoint.textPrompt,
+            body: TextPromptBody(
+                query: query,
+                conversationId: conversationId,
+                messageId: messageId,
+                triggeredInputType: triggeredInputType,
+                transcriptionId: transcriptionId,
+                useEntityExtraction: useEntityExtraction,
+                weatherCtaTriggered: weatherCtaTriggered,
+                retry: retry
+            ),
+            responseType: TextPromptResponse.self
+        )
+    }
+
+    // MARK: - Image analysis
+
+    struct ImageAnalysisBody: Encodable {
+        let conversationId: String
+        let image: String
+        let triggeredInputType: String
+        let query: String?
+        let latitude: String?
+        let longitude: String?
+        let imageName: String
+        let retry: Bool
+    }
+
+    func sendImageAnalysis(
+        conversationId: String,
+        base64Image: String,
+        imageName: String,
+        latitude: String? = nil,
+        longitude: String? = nil,
+        query: String? = nil,
+        retry: Bool = false
+    ) async throws -> ImageAnalysisResponse {
+        try await postJSON(
+            path: Endpoint.imageAnalysis,
+            body: ImageAnalysisBody(
+                conversationId: conversationId,
+                image: base64Image,
+                triggeredInputType: "image",
+                query: query,
+                latitude: latitude,
+                longitude: longitude,
+                imageName: imageName,
+                retry: retry
+            ),
+            responseType: ImageAnalysisResponse.self
+        )
+    }
+
+    // MARK: - Follow-up questions
+
+    func fetchFollowUpQuestions(messageId: String, useLatestPrompt: Bool = true) async throws -> FollowUpQuestionsResponse {
+        try await getJSON(
+            path: Endpoint.followUpQuestions,
+            params: ["message_id": messageId, "use_latest_prompt": useLatestPrompt ? "true" : "false"],
+            responseType: FollowUpQuestionsResponse.self
+        )
+    }
+
+    // MARK: - Track follow-up click
+
+    struct FollowUpClickBody: Encodable { let followUpQuestion: String }
+
+    func trackFollowUpClick(followUpQuestion: String) async throws {
+        struct Empty: Decodable {}
+        _ = try? await postJSON(path: Endpoint.followUpClick, body: FollowUpClickBody(followUpQuestion: followUpQuestion), responseType: Empty.self)
+    }
+
+    // MARK: - TTS
+
+    struct SynthesiseBody: Encodable {
+        let messageId: String
+        let text: String
+        let userId: String
+    }
+
+    func synthesiseAudio(messageId: String, text: String, userId: String) async throws -> SynthesiseAudioResponse {
+        try await postJSON(
+            path: Endpoint.synthesiseAudio,
+            body: SynthesiseBody(messageId: messageId, text: text, userId: userId),
+            responseType: SynthesiseAudioResponse.self
+        )
+    }
+
+    // MARK: - STT (multipart/form-data)
+
+    func transcribeAudio(_ request: TranscribeAudioRequest) async throws -> TranscribeAudioResponse {
+        guard let url = URL(string: "\(baseURL)/\(Endpoint.transcribeAudio)") else {
+            throw NetworkError.invalidURL
+        }
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        req.httpMethod = "POST"
+
+        let accessToken = await TokenStore.shared.accessToken
+        req.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        req.setValue(sdkApiKey, forHTTPHeaderField: "X-SDK-Key")
+        req.setValue("v2", forHTTPHeaderField: "Build-Version")
+        req.setValue(deviceInfo, forHTTPHeaderField: "Device-Info")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func append(_ string: String) { if let d = string.data(using: .utf8) { body.append(d) } }
+
+        // audio_file
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"audio_file\"; filename=\"recording.m4a\"\r\n")
+        append("Content-Type: audio/m4a\r\n\r\n")
+        body.append(request.audioData)
+        append("\r\n")
+
+        // user_id
+        append("--\(boundary)\r\n")
+        append("Content-Disposition: form-data; name=\"user_id\"\r\n\r\n")
+        append(request.userId)
+        append("\r\n")
+
+        if let conversationId = request.conversationId {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"conversation_id\"\r\n\r\n")
+            append(conversationId)
+            append("\r\n")
+        }
+
+        if let language = request.language {
+            append("--\(boundary)\r\n")
+            append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+            append(language)
+            append("\r\n")
+        }
+
+        append("--\(boundary)--\r\n")
+        req.httpBody = body
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw NetworkError.unknown("Invalid response") }
+
+        if http.statusCode == 401 {
+            _ = try await refreshHandler.refreshToken()
+            throw NetworkError.unauthorized
+        }
+        guard (200...299).contains(http.statusCode) else {
+            throw NetworkError.serverError(http.statusCode, String(data: data, encoding: .utf8))
+        }
+        return try decoder.decode(TranscribeAudioResponse.self, from: data)
+    }
+
+    // MARK: - History
+
+    func fetchConversationList(userId: String, page: Int = 1) async throws -> [ConversationListItem] {
+        let params = ["user_id": userId, "page": String(page)]
+        let url = URL(string: "\(baseURL)/\(Endpoint.conversationList)?\(params.map { "\($0.key)=\($0.value)" }.joined(separator: "&"))")!
+        let accessToken = await TokenStore.shared.accessToken
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "GET"
+        applyAuthHeaders(&request, accessToken: accessToken)
 
         let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw ApiError(statusCode: 0, errorBody: "Invalid response type")
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NetworkError.serverError(0, nil)
         }
-
-        guard (200...299).contains(httpResponse.statusCode) else {
-            let errorBody = String(data: data, encoding: .utf8) ?? ""
-            throw ApiError(statusCode: httpResponse.statusCode, errorBody: errorBody)
-        }
-
-        return data
+        return try decoder.decode([ConversationListItem].self, from: data)
     }
 
-    // MARK: - Public API Methods
-
-    /// Send a query and return an `AsyncThrowingStream` of `SseEvent`.
-    ///
-    /// Inspects the response `Content-Type`:
-    /// - `text/event-stream` — parses as SSE line-by-line using `URLSession.bytes(for:)`.
-    /// - `application/json` — emits a single "message" event followed by "done".
-    ///
-    /// The stream completes when the server ends the connection or a "done" event is received.
-    /// A synthetic "done" event is emitted if the stream ends without one.
-    func sendQuery(_ query: QueryRequest) -> AsyncThrowingStream<SseEvent, Error> {
-        AsyncThrowingStream { continuation in
-            let task = Task {
-                do {
-                    let url = baseURL.appendingPathComponent(Endpoint.chatSend)
-                    var request = URLRequest(url: url)
-                    request.httpMethod = "POST"
-                    request.timeoutInterval = TimeInterval(sseTimeoutMs) / 1_000.0
-                    request.httpBody = try query.toJsonData()
-                    applyHeaders(&request)
-                    request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
-
-                    let (bytes, response) = try await session.bytes(for: request)
-
-                    guard let httpResponse = response as? HTTPURLResponse else {
-                        continuation.yield(SseEvent(
-                            event: "error",
-                            data: "{\"code\":0,\"message\":\"Invalid response type\"}"
-                        ))
-                        continuation.finish()
-                        return
-                    }
-
-                    guard (200...299).contains(httpResponse.statusCode) else {
-                        // Collect the error body from the byte stream.
-                        var errorBytes = Data()
-                        for try await byte in bytes {
-                            errorBytes.append(byte)
-                        }
-                        let errorBody = String(data: errorBytes, encoding: .utf8) ?? ""
-                        continuation.yield(SseEvent(
-                            event: "error",
-                            data: Self.buildErrorJson(code: httpResponse.statusCode, message: errorBody)
-                        ))
-                        continuation.finish()
-                        return
-                    }
-
-                    let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? ""
-
-                    if contentType.contains("text/event-stream") {
-                        // SSE streaming path
-                        let parser = SSEParser()
-                        var receivedDone = false
-
-                        for try await line in bytes.lines {
-                            if Task.isCancelled { break }
-
-                            if let event = parser.feed(line: line) {
-                                continuation.yield(event)
-                                if event.event == "done" {
-                                    receivedDone = true
-                                }
-                            }
-                        }
-
-                        // Flush any trailing event without a final blank line.
-                        if let trailingEvent = parser.flush() {
-                            continuation.yield(trailingEvent)
-                            if trailingEvent.event == "done" {
-                                receivedDone = true
-                            }
-                        }
-
-                        // Emit synthetic done if the stream ended without one.
-                        if !receivedDone {
-                            continuation.yield(SseEvent(event: "done", data: "{}"))
-                        }
-
-                    } else if contentType.contains("application/json") {
-                        // Non-streaming JSON path
-                        var allBytes = Data()
-                        for try await byte in bytes {
-                            allBytes.append(byte)
-                            if Task.isCancelled { break }
-                        }
-                        let responseText = String(data: allBytes, encoding: .utf8) ?? "{}"
-                        continuation.yield(SseEvent(event: "message", data: responseText))
-                        continuation.yield(SseEvent(event: "done", data: "{}"))
-
-                    } else {
-                        continuation.yield(SseEvent(
-                            event: "error",
-                            data: Self.buildErrorJson(code: 0, message: "Unexpected Content-Type: \(contentType)")
-                        ))
-                    }
-
-                    continuation.finish()
-
-                } catch {
-                    if Task.isCancelled {
-                        continuation.finish()
-                    } else {
-                        Self.logger.warning("Error in sendQuery stream: \(error.localizedDescription)")
-                        continuation.yield(SseEvent(
-                            event: "error",
-                            data: Self.buildErrorJson(code: 0, message: error.localizedDescription)
-                        ))
-                        continuation.finish()
-                    }
-                }
-            }
-
-            continuation.onTermination = { @Sendable _ in
-                task.cancel()
-            }
-        }
-    }
-
-    /// Submit feedback (thumbs up/down) for a response.
-    ///
-    /// - Parameter feedback: The feedback payload to submit.
-    /// - Throws: `ApiError` on server errors.
-    func submitFeedback(_ feedback: FeedbackRequest) async throws {
-        do {
-            let body = try feedback.toJsonData()
-            _ = try await postJSON(endpoint: Endpoint.feedback, body: body)
-        } catch {
-            Self.logger.warning("Failed to submit feedback: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Fetch conversation history from the server.
-    ///
-    /// - Returns: Array of conversations with their messages.
-    /// - Throws: `ApiError` on server errors.
-    func getHistory() async throws -> [ConversationResponse] {
-        do {
-            let text = try await getString(endpoint: Endpoint.history)
-            guard let data = text.data(using: .utf8),
-                  let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                return []
-            }
-            return array.map { ConversationResponse.fromJson($0) }
-        } catch {
-            Self.logger.warning("Failed to get history: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Fetch available languages from the server.
-    ///
-    /// - Returns: Array of language options.
-    /// - Throws: `ApiError` on server errors.
-    func getLanguages() async throws -> [LanguageResponse] {
-        do {
-            let text = try await getString(endpoint: Endpoint.languages)
-            guard let data = text.data(using: .utf8),
-                  let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                return []
-            }
-            return array.map { LanguageResponse.fromJson($0) }
-        } catch {
-            Self.logger.warning("Failed to get languages: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Fetch starter questions for the empty chat state.
-    ///
-    /// - Parameter language: Language code (e.g., "hi", "en").
-    /// - Returns: Array of starter question suggestions.
-    /// - Throws: `ApiError` on server errors.
-    func getStarters(language: String) async throws -> [StarterQuestionResponse] {
-        do {
-            let text = try await getString(endpoint: Endpoint.starters, params: ["lang": language])
-            guard let data = text.data(using: .utf8),
-                  let array = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-                return []
-            }
-            return array.map { StarterQuestionResponse.fromJson($0) }
-        } catch {
-            Self.logger.warning("Failed to get starters: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Submit onboarding data — user-selected location and language.
-    ///
-    /// - Parameters:
-    ///   - location: User's geographic coordinates.
-    ///   - language: Selected language code.
-    /// - Throws: `ApiError` on server errors.
-    func submitOnboarding(location: Location, language: String) async throws {
-        do {
-            let dict: [String: Any] = [
-                "location": ["lat": location.lat, "lng": location.lng],
-                "language": language,
-            ]
-            let body = try JSONSerialization.data(withJSONObject: dict, options: [])
-            _ = try await postJSON(endpoint: Endpoint.onboarding, body: body)
-        } catch {
-            Self.logger.warning("Failed to submit onboarding: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    /// Convert text to speech. Returns raw audio bytes.
-    ///
-    /// - Parameters:
-    ///   - text: The text to synthesize.
-    ///   - language: Language code for synthesis.
-    /// - Returns: Raw audio data (e.g., MP3/WAV bytes).
-    /// - Throws: `ApiError` on server errors.
-    func textToSpeech(text: String, language: String) async throws -> Data {
-        do {
-            let dict: [String: Any] = [
-                "text": text,
-                "language": language,
-            ]
-            let body = try JSONSerialization.data(withJSONObject: dict, options: [])
-            return try await postBytes(endpoint: Endpoint.tts, body: body)
-        } catch {
-            Self.logger.warning("Failed to get TTS audio: \(error.localizedDescription)")
-            throw error
-        }
-    }
-
-    // MARK: - Private Helpers
-
-    /// Apply default headers to a mutable URLRequest.
-    private func applyHeaders(_ request: inout URLRequest) {
-        for (key, value) in defaultHeaders() {
-            request.setValue(value, forHTTPHeaderField: key)
-        }
-    }
-
-    /// Build a JSON error string safely using JSONSerialization.
-    private static func buildErrorJson(code: Int, message: String) -> String {
-        let dict: [String: Any] = ["code": code, "message": message]
-        guard let data = try? JSONSerialization.data(withJSONObject: dict),
-              let json = String(data: data, encoding: .utf8) else {
-            return "{}"
-        }
-        return json
+    func fetchChatHistory(conversationId: String, page: Int = 1) async throws -> ConversationChatHistoryResponse {
+        try await getJSON(
+            path: Endpoint.chatHistory,
+            params: ["conversation_id": conversationId, "page": String(page)],
+            responseType: ConversationChatHistoryResponse.self
+        )
     }
 }

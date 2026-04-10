@@ -24,7 +24,6 @@ struct ChatView: View {
     /// Whether the input bar should be disabled.
     private var isInputDisabled: Bool {
         if case .sending = viewModel.chatState { return true }
-        if case .streaming = viewModel.chatState { return true }
         return false
     }
 
@@ -48,7 +47,7 @@ struct ChatView: View {
             }
 
             VStack(spacing: 0) {
-                if case .streaming = viewModel.chatState {
+                if case .sending = viewModel.chatState {
                     StreamingIndicator(viewModel: viewModel)
                 }
 
@@ -73,9 +72,6 @@ struct ChatView: View {
                 )
             }
         }
-        .task {
-            viewModel.loadStarters()
-        }
     }
 }
 
@@ -98,7 +94,7 @@ private struct ChatTopBar: View {
 
             if config.historyEnabled {
                 Button {
-                    viewModel.navigateTo(screen: .history)
+                    viewModel.navigateTo(.history)
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
                         .font(.system(size: 20))
@@ -109,7 +105,7 @@ private struct ChatTopBar: View {
 
             if config.profileEnabled {
                 Button {
-                    viewModel.navigateTo(screen: .profile)
+                    viewModel.navigateTo(.profile)
                 } label: {
                     Image(systemName: "person.circle")
                         .font(.system(size: 20))
@@ -126,7 +122,7 @@ private struct ChatTopBar: View {
 
 // MARK: - Starter Questions Area
 
-/// Shown when the message list is empty. Displays a prompt and starter question chips.
+/// Shown when the message list is empty. Displays a welcome prompt.
 private struct StarterQuestionsArea: View {
     @ObservedObject var viewModel: ChatViewModel
 
@@ -145,49 +141,9 @@ private struct StarterQuestionsArea: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 32)
 
-                if !viewModel.starterQuestions.isEmpty {
-                    StarterChipGrid(
-                        questions: viewModel.starterQuestions,
-                        onTap: { text in
-                            viewModel.sendQuery(text: text, inputMethod: "starter")
-                        }
-                    )
-                    .padding(.horizontal, 16)
-                }
-
                 Spacer()
             }
             .frame(maxWidth: .infinity)
-        }
-    }
-}
-
-/// Flow-layout grid of starter question chips.
-private struct StarterChipGrid: View {
-    let questions: [StarterQuestionResponse]
-    let onTap: (String) -> Void
-
-    var body: some View {
-        ChatFlowLayout(spacing: 8) {
-            ForEach(Array(questions.enumerated()), id: \.offset) { _, question in
-                Button {
-                    onTap(question.text)
-                } label: {
-                    Text(question.text)
-                        .font(.subheadline)
-                        .foregroundColor(primaryColor)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(
-                            RoundedRectangle(cornerRadius: cardCornerRadius)
-                                .fill(primaryColor.opacity(0.08))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: cardCornerRadius)
-                                .stroke(primaryColor.opacity(0.3), lineWidth: 1)
-                        )
-                }
-            }
         }
     }
 }
@@ -256,11 +212,8 @@ private struct ChatFlowLayout: Layout {
 private struct MessageList: View {
     @ObservedObject var viewModel: ChatViewModel
 
-    /// Whether the last message is currently being streamed.
-    private var isLastMessageStreaming: Bool {
-        if case .streaming = viewModel.chatState { return true }
-        return false
-    }
+    /// Whether the last message is currently being streamed (always false — REST API).
+    private var isLastMessageStreaming: Bool { false }
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -280,12 +233,7 @@ private struct MessageList: View {
                                 onFollowUpClick: { text in
                                     viewModel.sendFollowUp(text: text)
                                 },
-                                onFeedback: { rating in
-                                    viewModel.submitFeedback(
-                                        messageId: message.id,
-                                        rating: rating
-                                    )
-                                }
+                                onFeedback: { _ in }
                             )
                             .id(message.id)
                         }
@@ -304,22 +252,12 @@ private struct MessageList: View {
                     proxy.scrollTo("chat_bottom_anchor", anchor: .bottom)
                 }
             }
-            .onChange(of: streamingText) { _ in
-                proxy.scrollTo("chat_bottom_anchor", anchor: .bottom)
-            }
             .onAppear {
                 proxy.scrollTo("chat_bottom_anchor", anchor: .bottom)
             }
         }
     }
 
-    /// Extract streaming partial text for scroll tracking.
-    private var streamingText: String {
-        if case let .streaming(partialText, _) = viewModel.chatState {
-            return partialText
-        }
-        return ""
-    }
 }
 
 // MARK: - UserBubble
@@ -364,11 +302,11 @@ private struct FollowUpRow: View {
            !isDisabled {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    ForEach(lastAssistant.followUps, id: \.self) { followUp in
+                    ForEach(lastAssistant.followUps, id: \.question) { followUp in
                         Button {
-                            viewModel.sendFollowUp(text: followUp)
+                            viewModel.sendFollowUp(text: followUp.question, followUpId: followUp.id)
                         } label: {
-                            Text(followUp)
+                            Text(followUp.question)
                                 .font(.caption)
                                 .foregroundColor(primaryColor)
                                 .padding(.horizontal, 12)

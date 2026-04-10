@@ -50,4 +50,11 @@ sealed interface FarmerChatEvent {
         val isConnected: Boolean,
         val timestamp: Long = System.currentTimeMillis(),
     ) : FarmerChatEvent
+
+    /** Emitted when the user changes the active language. */
+    data class LanguageChanged(
+        val from: String,
+        val to: String,
+        val timestamp: Long = System.currentTimeMillis(),
+    ) : FarmerChatEvent
 }

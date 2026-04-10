@@ -13,6 +13,8 @@ struct ResponseCard: View {
     var onFollowUpClick: (String) -> Void = { _ in }
     var onFeedback: (String) -> Void = { _ in }
 
+    @State private var feedbackRating: String?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Avatar + content row
@@ -42,7 +44,7 @@ struct ResponseCard: View {
             // Follow-up chips (only when not streaming and followUps present)
             if !isStreaming && !message.followUps.isEmpty {
                 FollowUpChips(
-                    followUps: message.followUps,
+                    followUps: message.followUps.map(\.question),
                     onTap: onFollowUpClick
                 )
                 .padding(.leading, 36)
@@ -52,8 +54,11 @@ struct ResponseCard: View {
             // Action bar (only when not streaming)
             if !isStreaming {
                 ActionBar(
-                    feedbackRating: message.feedbackRating,
-                    onFeedback: onFeedback
+                    feedbackRating: feedbackRating,
+                    onFeedback: { rating in
+                        feedbackRating = rating
+                        onFeedback(rating)
+                    }
                 )
                 .padding(.leading, 36)
                 .padding(.top, 4)
