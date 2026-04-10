@@ -56,8 +56,15 @@ data class FarmerChatConfig(
 
     // ── Network ───────────────────────────────────────────────────────────
 
-    /** HTTP connect and read timeout in milliseconds. */
+    /** HTTP connect timeout and read timeout for fast endpoints (auth, metadata) in milliseconds. */
     val requestTimeoutMs: Int = 15_000,
+
+    /**
+     * Read timeout in milliseconds for AI inference endpoints:
+     * sendTextPrompt, imageAnalysis, synthesiseAudio, transcribeAudio.
+     * LLM responses can take 20–45 s, so this should be well above requestTimeoutMs.
+     */
+    val aiReadTimeoutMs: Int = 60_000,
 
     /** Corner radius for cards and buttons in dp. */
     val cornerRadius: Int = 12,

@@ -53,10 +53,10 @@ object FarmerChat {
                 this.config = config
                 this.sessionId = java.util.UUID.randomUUID().toString()
                 this.apiClient = ApiClient(
-                    config.baseUrl,
-                    apiKey,
-                    config.requestTimeoutMs,
-                    config.sseTimeoutMs,
+                    baseUrl = config.baseUrl,
+                    apiKey = apiKey,
+                    requestTimeoutMs = config.requestTimeoutMs,
+                    aiReadTimeoutMs = config.aiReadTimeoutMs,
                 )
                 this.connectivityMonitor = ConnectivityMonitor(context.applicationContext).also { it.start() }
                 this.crashBridge = CrashBridge().also { it.detect() }

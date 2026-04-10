@@ -35,7 +35,7 @@ internal class ApiClient(
     private val baseUrl: String,
     private val apiKey: String,
     private val requestTimeoutMs: Int = 15_000,
-    private val sseTimeoutMs: Int = 30_000,
+    private val aiReadTimeoutMs: Int = 60_000,
 ) {
 
     init {
@@ -156,7 +156,7 @@ internal class ApiClient(
                 connection = openConnection(endpoint).apply {
                     requestMethod = "POST"
                     connectTimeout = requestTimeoutMs
-                    readTimeout = requestTimeoutMs
+                    readTimeout = aiReadTimeoutMs
                     doOutput = true
                     applyHeaders(defaultHeaders())
                 }
@@ -195,7 +195,7 @@ internal class ApiClient(
             connection = openConnection(EP_CHAT_SEND).apply {
                 requestMethod = "POST"
                 connectTimeout = requestTimeoutMs
-                readTimeout = sseTimeoutMs
+                readTimeout = aiReadTimeoutMs
                 doOutput = true
                 setRequestProperty("Accept", "text/event-stream")
                 applyHeaders(defaultHeaders())

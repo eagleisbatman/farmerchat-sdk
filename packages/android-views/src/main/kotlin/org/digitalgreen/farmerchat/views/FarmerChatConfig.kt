@@ -41,17 +41,15 @@ data class FarmerChatConfig(
     /** Maximum number of messages to keep in memory. Defaults to 50. */
     val maxMessagesInMemory: Int = 50,
 
-    /** HTTP request timeout in milliseconds. Defaults to 15 000 ms. */
+    /** HTTP connect timeout and read timeout for fast endpoints (auth, metadata) in milliseconds. Defaults to 15 000 ms. */
     val requestTimeoutMs: Int = 15_000,
 
-    /** SSE stream read timeout in milliseconds. Defaults to 30 000 ms. */
-    val sseTimeoutMs: Int = 30_000,
-
     /**
-     * Number of SSE reconnect attempts before showing a connection error.
-     * Defaults to 1.
+     * Read timeout in milliseconds for AI inference endpoints:
+     * sendTextPrompt, imageAnalysis, synthesiseAudio, transcribeAudio.
+     * LLM responses can take 20–45 s, so this should be well above requestTimeoutMs.
      */
-    val sseReconnectAttempts: Int = 1,
+    val aiReadTimeoutMs: Int = 60_000,
 
     /** Corner radius for cards and buttons in dp. Defaults to 12. */
     val cornerRadius: Int = 12,
