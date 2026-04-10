@@ -147,6 +147,36 @@ struct TranscribeAudioResponse: Decodable {
     let transcriptionId: String?
 }
 
+// MARK: - Language
+
+public struct SupportedLanguage: Decodable, Identifiable, Equatable {
+    public let id: Int
+    public let name: String
+    public let code: String
+    public let displayName: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, code
+        case displayName = "display_name"
+    }
+
+    public static func == (lhs: SupportedLanguage, rhs: SupportedLanguage) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+public struct SupportedLanguageGroup: Decodable {
+    public let countryName: String?
+    public let countryCode: String?
+    public let languages: [SupportedLanguage]
+
+    enum CodingKeys: String, CodingKey {
+        case countryName = "country_name"
+        case countryCode = "country_code"
+        case languages
+    }
+}
+
 // MARK: - History
 
 public struct ConversationListItem: Decodable, Identifiable {

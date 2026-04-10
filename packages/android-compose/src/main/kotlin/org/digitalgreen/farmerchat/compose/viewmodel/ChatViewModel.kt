@@ -15,6 +15,7 @@ import org.digitalgreen.farmerchat.compose.FarmerChatEvent
 import org.digitalgreen.farmerchat.compose.network.ConversationHistoryItem
 import org.digitalgreen.farmerchat.compose.network.ConversationListItem
 import org.digitalgreen.farmerchat.compose.network.GuestApiClient
+import org.digitalgreen.farmerchat.compose.network.SdkPreferences
 import org.digitalgreen.farmerchat.compose.network.SupportedLanguage
 import org.digitalgreen.farmerchat.compose.network.SupportedLanguageGroup
 import org.digitalgreen.farmerchat.compose.network.TokenStore
@@ -77,6 +78,7 @@ internal class ChatViewModel : ViewModel() {
 
     private val _chatState   = MutableStateFlow<ChatUiState>(ChatUiState.Idle)
     private val _messages    = MutableStateFlow<List<ChatMessage>>(emptyList())
+    // Determined lazily in init — see determineInitialScreen()
     private val _currentScreen = MutableStateFlow<Screen>(Screen.Chat)
     private val _isConnected = MutableStateFlow(true)
     private val _selectedLanguage = MutableStateFlow("")
@@ -109,7 +111,19 @@ internal class ChatViewModel : ViewModel() {
 
     init {
         try {
-            _selectedLanguage.value = config.defaultLanguage ?: "en"
+            // Resolve starting language: host config > persisted pref > default "en"
+            _selectedLanguage.value = config.defaultLanguage
+                ?: SdkPreferences.selectedLanguage.ifEmpty { "en" }
+
+            // Determine which screen to show first:
+            //  - Host supplied a defaultLanguage → skip onboarding (host configured)
+            //  - User has already gone through onboarding → go straight to Chat
+            //  - Otherwise → Onboarding (first launch)
+            _currentScreen.value = when {
+                config.defaultLanguage != null   -> Screen.Chat
+                SdkPreferences.onboardingDone    -> Screen.Chat
+                else                             -> Screen.Onboarding
+            }
 
             FarmerChat.connectivityMonitor?.isConnected
                 ?.onEach { connected -> _isConnected.value = connected }
@@ -355,10 +369,12 @@ internal class ChatViewModel : ViewModel() {
                     userId = TokenStore.userId,
                     languageId = language.id.toString(),
                 )
+                val previousCode = _selectedLanguage.value
                 _selectedLanguage.value = language.code
+                SdkPreferences.selectedLanguage = language.code
                 emitEvent(
                     FarmerChatEvent.LanguageChanged(
-                        from = _selectedLanguage.value,
+                        from = previousCode,
                         to = language.code,
                     )
                 )
@@ -453,6 +469,10 @@ internal class ChatViewModel : ViewModel() {
 
     fun navigateTo(screen: Screen) {
         try {
+            // Mark onboarding complete the first time the user moves from Onboarding to Chat.
+            if (_currentScreen.value == Screen.Onboarding && screen == Screen.Chat) {
+                SdkPreferences.onboardingDone = true
+            }
             _currentScreen.value = screen
         } catch (e: Exception) {
             Log.w(TAG, "navigateTo failed", e)

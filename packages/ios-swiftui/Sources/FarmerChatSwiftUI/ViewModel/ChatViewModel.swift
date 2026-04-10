@@ -73,6 +73,7 @@ internal final class ChatViewModel: ObservableObject {
     @Published private(set) var isConnected: Bool = true
     @Published private(set) var selectedLanguage: String = "en"
     @Published private(set) var conversationList: [ConversationListItem] = []
+    @Published private(set) var availableLanguageGroups: [SupportedLanguageGroup] = []
 
     // MARK: - Internal Bookkeeping
 
@@ -87,7 +88,16 @@ internal final class ChatViewModel: ObservableObject {
     // MARK: - Init
 
     init() {
-        selectedLanguage = config.defaultLanguage ?? "en"
+        // Language: host config > persisted UserDefaults pref > "en"
+        let savedLang = UserDefaults.standard.string(forKey: "fc_selected_language") ?? ""
+        selectedLanguage = config.defaultLanguage ?? (savedLang.isEmpty ? "en" : savedLang)
+
+        // Determine starting screen:
+        //  host supplied defaultLanguage → skip onboarding
+        //  user already completed onboarding → go straight to chat
+        //  otherwise show onboarding (first launch)
+        let onboardingDone = UserDefaults.standard.bool(forKey: "fc_onboarding_done")
+        currentScreen = (config.defaultLanguage != nil || onboardingDone) ? .chat : .onboarding
 
         if let monitor = FarmerChat.shared.connectivityMonitor {
             connectivityCancellable = monitor.$isConnected
@@ -95,7 +105,6 @@ internal final class ChatViewModel: ObservableObject {
                 .sink { [weak self] connected in self?.isConnected = connected }
         }
 
-        // Ensure guest tokens on init
         Task {
             await ensureGuestTokens()
         }
@@ -299,7 +308,35 @@ internal final class ChatViewModel: ObservableObject {
 
     // MARK: - Navigation
 
-    func navigateTo(_ screen: Screen) { currentScreen = screen }
+    func navigateTo(_ screen: Screen) {
+        if currentScreen == .onboarding && screen == .chat {
+            UserDefaults.standard.set(true, forKey: "fc_onboarding_done")
+        }
+        currentScreen = screen
+    }
+
+    /// Update the user's preferred language and persist for future launches.
+    func setPreferredLanguage(_ language: SupportedLanguage) {
+        let previous = selectedLanguage
+        selectedLanguage = language.code
+        UserDefaults.standard.set(language.code, forKey: "fc_selected_language")
+        emitEvent(.languageChanged(from: previous, to: language.code, timestamp: Date()))
+    }
+
+    /// Fetch supported languages from the server and update [availableLanguageGroups].
+    func loadLanguages() {
+        guard let client = apiClient else { return }
+        Task {
+            do {
+                let groups = try await client.getSupportedLanguages()
+                await MainActor.run {
+                    self.availableLanguageGroups = groups
+                }
+            } catch {
+                print("[\(Self.tag)] loadLanguages failed: \(error)")
+            }
+        }
+    }
 
     // Previously used by FarmerChat.destroy() — safe no-op now
     func stopStream() {}

@@ -1,6 +1,8 @@
 // Provider & FAB
 export { FarmerChat, useFarmerChatConfig } from './FarmerChat';
 export { FarmerChatFAB } from './FarmerChatFAB';
+export { FarmerChatView } from './FarmerChatView';
+export { ChatProvider, useChatContext } from './ChatProvider';
 
 // Screens
 export { ChatScreen } from './screens/ChatScreen';

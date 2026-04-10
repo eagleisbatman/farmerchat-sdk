@@ -8,6 +8,7 @@ import {
   API_TRANSCRIBE_AUDIO,
   API_CHAT_HISTORY,
   API_CONVERSATION_LIST,
+  API_SUPPORTED_LANGUAGES,
 } from '../config/constants';
 import { addAuthHeaders } from './AuthInterceptor';
 import { TokenRefreshHandler } from './TokenRefreshHandler';
@@ -30,6 +31,7 @@ import type {
   GetVoiceResponse,
   ConversationChatHistoryResponse,
   ConversationListResponse,
+  SupportedLanguageGroup,
 } from '../models/responses';
 import type { SDKConfiguration } from '../config/SDKConfig';
 
@@ -159,5 +161,11 @@ export class ChatApiClient {
 
   async getChatHistory(conversationId: string, page = 1): Promise<ConversationChatHistoryResponse> {
     return this.get(API_CHAT_HISTORY, { conversation_id: conversationId, page: String(page) });
+  }
+
+  async getSupportedLanguages(countryCode?: string): Promise<SupportedLanguageGroup[]> {
+    const params: Record<string, string> = {};
+    if (countryCode) params.country_code = countryCode;
+    return this.get(API_SUPPORTED_LANGUAGES, params);
   }
 }

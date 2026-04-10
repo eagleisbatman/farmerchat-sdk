@@ -26,6 +26,7 @@ internal final class ApiClient {
         static let transcribeAudio     = "api/chat/transcribe_audio/"
         static let chatHistory         = "api/chat/conversation_chat_history/"
         static let conversationList    = "api/chat/conversation_list/"
+        static let supportedLanguages  = "api/language/v2/country_wise_supported_languages/"
     }
 
     // MARK: - Properties
@@ -373,5 +374,25 @@ internal final class ApiClient {
             params: ["conversation_id": conversationId, "page": String(page)],
             responseType: ConversationChatHistoryResponse.self
         )
+    }
+
+    // MARK: - Languages
+
+    /// Fetch the list of supported languages grouped by country.
+    func getSupportedLanguages(countryCode: String? = nil) async throws -> [SupportedLanguageGroup] {
+        var params: [String: String] = [:]
+        if let code = countryCode { params["country_code"] = code }
+        let queryString = params.isEmpty ? "" : "?\(params.map { "\($0.key)=\($0.value)" }.joined(separator: "&"))"
+        let url = URL(string: "\(baseURL)/\(Endpoint.supportedLanguages)\(queryString)")!
+        let accessToken = await TokenStore.shared.accessToken
+        var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
+        request.httpMethod = "GET"
+        applyAuthHeaders(&request, accessToken: accessToken)
+
+        let (data, response) = try await session.data(for: request)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw NetworkError.serverError(0, nil)
+        }
+        return try decoder.decode([SupportedLanguageGroup].self, from: data)
     }
 }

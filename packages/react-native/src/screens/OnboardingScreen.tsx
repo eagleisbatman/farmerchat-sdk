@@ -8,61 +8,60 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
-import { useChat } from '../hooks/useChat';
+import { useChatContext } from '../ChatProvider';
 import { useFarmerChatConfig } from '../FarmerChat';
+import type { SupportedLanguage } from '../models/responses';
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface LocationData {
-  lat: number;
-  lng: number;
-}
-
-type OnboardingStep = 'location' | 'language';
-
-// ---------------------------------------------------------------------------
-// Sub-components
+// LanguageCard
 // ---------------------------------------------------------------------------
 
 interface LanguageCardProps {
-  code: string;
-  name: string;
-  nativeName: string;
+  language: SupportedLanguage;
   isSelected: boolean;
   primaryColor: string;
-  secondaryColor: string;
   onSelect: () => void;
 }
 
-function LanguageCard({
-  code,
-  name,
-  nativeName,
-  isSelected,
-  primaryColor,
-  secondaryColor,
-  onSelect,
-}: LanguageCardProps) {
+function LanguageCard({ language, isSelected, primaryColor, onSelect }: LanguageCardProps) {
+  const displayName = language.display_name || language.name;
+  const subName = language.name !== displayName ? language.name : null;
+
   return (
     <Pressable
       style={[
-        styles.languageCard,
+        styles.langCard,
         {
-          borderColor: isSelected ? primaryColor : '#E0E0E0',
-          backgroundColor: isSelected ? secondaryColor : '#FFFFFF',
+          borderColor:     isSelected ? primaryColor : '#E0E0E0',
+          backgroundColor: isSelected ? primaryColor + '18' : '#FFFFFF',
         },
       ]}
       onPress={onSelect}
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
     >
-      <Text style={[styles.languageNative, isSelected && { color: primaryColor }]}>
-        {nativeName}
-      </Text>
-      <Text style={styles.languageName}>{name}</Text>
-      <Text style={styles.languageCode}>{code.toUpperCase()}</Text>
+      {/* Speaker icon placeholder */}
+      <Text style={[styles.langIcon, { color: isSelected ? primaryColor : '#BDBDBD' }]}>🔊</Text>
+
+      <View style={styles.langTextGroup}>
+        <Text
+          style={[styles.langPrimary, isSelected && { color: primaryColor }]}
+          numberOfLines={1}
+        >
+          {displayName}
+        </Text>
+        {subName ? (
+          <Text style={styles.langSub} numberOfLines={1}>{subName}</Text>
+        ) : null}
+      </View>
+
+      {isSelected ? (
+        <View style={[styles.checkCircle, { backgroundColor: primaryColor }]}>
+          <Text style={styles.checkMark}>✓</Text>
+        </View>
+      ) : (
+        <View style={styles.checkCirclePlaceholder} />
+      )}
     </Pressable>
   );
 }
@@ -73,70 +72,48 @@ function LanguageCard({
 
 export function OnboardingScreen() {
   const config = useFarmerChatConfig();
-  const {
-    selectedLanguage,
-    availableLanguages,
-    loadLanguages,
-    setLanguage,
-    completeOnboarding,
-  } = useChat();
+  const { selectedLanguage, setLanguage, navigateTo, availableLanguageGroups, loadLanguages } =
+    useChatContext();
 
-  const primaryColor = config.theme?.primaryColor ?? '#1B6B3A';
-  const secondaryColor = config.theme?.secondaryColor ?? '#F0F7F2';
+  const primaryColor = config.theme?.primaryColor ?? '#2E7D32';
 
-  const [step, setStep] = useState<OnboardingStep>('location');
-  const [location, setLocation] = useState<LocationData | null>(null);
+  const [step, setStep] = useState<'location' | 'language'>('location');
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [languagesLoading, setLanguagesLoading] = useState(false);
 
-  // Fetch available languages when entering the language step
+  const languages: SupportedLanguage[] = availableLanguageGroups.flatMap(g => g.languages);
+
+  // Fetch languages when entering step 2
   useEffect(() => {
-    if (step === 'language') {
-      const fetchLanguages = async () => {
-        try {
-          setLanguagesLoading(true);
-          await loadLanguages();
-        } catch {
-          // Languages will fall back to bundled list
-        } finally {
-          setLanguagesLoading(false);
-        }
-      };
-      fetchLanguages();
+    if (step === 'language' && availableLanguageGroups.length === 0) {
+      setLanguagesLoading(true);
+      loadLanguages().finally(() => setLanguagesLoading(false));
     }
-  }, [step, loadLanguages]);
+  }, [step, availableLanguageGroups.length, loadLanguages]);
 
   const handleShareLocation = useCallback(async () => {
     try {
       setLocationLoading(true);
       setLocationError(null);
 
-      // Attempt geolocation via the global navigator (polyfilled in React Native).
-      // We use a dynamic check since types may not include navigator.geolocation.
       const geo = (globalThis as Record<string, unknown>).navigator as
         | { geolocation?: { getCurrentPosition: (s: (p: { coords: { latitude: number; longitude: number } }) => void, e: (err: unknown) => void, o: object) => void } }
         | undefined;
 
       if (!geo?.geolocation) {
-        setLocationError('Location services are not available. You can skip this step.');
+        setLocationError('Location services unavailable. You can skip this step.');
         return;
       }
 
-      const position = await new Promise<{ coords: { latitude: number; longitude: number } }>(
-        (resolve, reject) => {
-          geo.geolocation!.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: false,
-            timeout: 10000,
-            maximumAge: 300000,
-          });
-        },
-      );
-
-      setLocation({
-        lat: position.coords.latitude,
-        lng: position.coords.longitude,
+      await new Promise<void>((resolve, reject) => {
+        geo.geolocation!.getCurrentPosition(
+          () => resolve(),
+          (err) => reject(err),
+          { enableHighAccuracy: false, timeout: 10_000, maximumAge: 300_000 },
+        );
       });
+
       setStep('language');
     } catch {
       setLocationError('Could not get your location. You can skip this step.');
@@ -146,33 +123,12 @@ export function OnboardingScreen() {
   }, []);
 
   const handleSkipLocation = useCallback(() => {
-    try {
-      setLocation({ lat: 0, lng: 0 });
-      setStep('language');
-    } catch {
-      // Navigation is non-critical
-    }
+    setStep('language');
   }, []);
 
-  const handleLanguageSelect = useCallback(
-    (code: string) => {
-      try {
-        setLanguage(code);
-      } catch {
-        // Language selection failure is non-critical
-      }
-    },
-    [setLanguage],
-  );
-
-  const handleComplete = useCallback(async () => {
-    try {
-      const loc = location ?? { lat: 0, lng: 0 };
-      await completeOnboarding(loc, selectedLanguage);
-    } catch {
-      // Error is managed by the hook
-    }
-  }, [location, selectedLanguage, completeOnboarding]);
+  const handleGetStarted = useCallback(() => {
+    navigateTo('chat');
+  }, [navigateTo]);
 
   // ---------------------------------------------------------------------------
   // Location step
@@ -181,43 +137,57 @@ export function OnboardingScreen() {
   if (step === 'location') {
     return (
       <View style={styles.container}>
+        {/* Header */}
         <View style={[styles.header, { backgroundColor: primaryColor }]}>
-          <Text style={styles.headerTitle}>Welcome to FarmerChat</Text>
+          <Text style={styles.logoEmoji}>🌱</Text>
+          <Text style={styles.headerTitle}>FarmChat AI</Text>
+          <Text style={styles.headerSub}>Smart Farming Assistant</Text>
         </View>
 
+        {/* Step dots */}
+        <View style={styles.stepDots}>
+          <View style={[styles.dot, styles.dotActive, { backgroundColor: primaryColor }]} />
+          <View style={[styles.dot, styles.dotInactive]} />
+        </View>
+
+        {/* Content */}
         <View style={styles.stepContent}>
-          <Text style={styles.stepIcon}>{'\u{1F4CD}'}</Text>
+          <Text style={styles.stepIcon}>📍</Text>
           <Text style={styles.stepTitle}>Share Your Location</Text>
-          <Text style={styles.stepDescription}>
+          <Text style={styles.stepDesc}>
             Your location helps us provide region-specific agricultural advice,
             including local weather and crop recommendations.
           </Text>
 
-          {locationError && (
-            <Text style={styles.locationError}>{locationError}</Text>
-          )}
+          {locationError ? (
+            <Text style={styles.errorText}>{locationError}</Text>
+          ) : null}
 
           <Pressable
-            style={[styles.primaryButton, { backgroundColor: primaryColor }]}
+            style={[styles.outlineBtn, { borderColor: primaryColor }]}
             onPress={handleShareLocation}
             disabled={locationLoading}
             accessibilityRole="button"
           >
             {locationLoading ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
+              <ActivityIndicator color={primaryColor} size="small" />
             ) : (
-              <Text style={styles.primaryButtonText}>Share Location</Text>
+              <Text style={[styles.outlineBtnText, { color: primaryColor }]}>Share Location</Text>
             )}
           </Pressable>
 
+          <Pressable style={styles.skipBtn} onPress={handleSkipLocation}>
+            <Text style={styles.skipBtnText}>Skip for now</Text>
+          </Pressable>
+        </View>
+
+        {/* Continue */}
+        <View style={styles.footer}>
           <Pressable
-            style={styles.secondaryButton}
+            style={[styles.primaryBtn, { backgroundColor: primaryColor }]}
             onPress={handleSkipLocation}
-            accessibilityRole="button"
           >
-            <Text style={[styles.secondaryButtonText, { color: primaryColor }]}>
-              Skip for now
-            </Text>
+            <Text style={styles.primaryBtnText}>Continue</Text>
           </Pressable>
         </View>
       </View>
@@ -230,49 +200,57 @@ export function OnboardingScreen() {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
       <View style={[styles.header, { backgroundColor: primaryColor }]}>
-        <Text style={styles.headerTitle}>Choose Your Language</Text>
+        <Text style={styles.logoEmoji}>🌱</Text>
+        <Text style={styles.headerTitle}>FarmChat AI</Text>
+        <Text style={styles.headerSub}>Smart Farming Assistant</Text>
       </View>
 
-      <View style={styles.languageBody}>
-        {languagesLoading ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator color={primaryColor} size="large" />
-            <Text style={styles.loadingText}>Loading languages...</Text>
-          </View>
-        ) : (
-          <ScrollView
-            contentContainerStyle={styles.languageList}
-            showsVerticalScrollIndicator={false}
-          >
-            {availableLanguages.map((lang) => (
-              <LanguageCard
-                key={lang.code}
-                code={lang.code}
-                name={lang.name}
-                nativeName={lang.nativeName}
-                isSelected={selectedLanguage === lang.code}
-                primaryColor={primaryColor}
-                secondaryColor={secondaryColor}
-                onSelect={() => handleLanguageSelect(lang.code)}
-              />
-            ))}
-          </ScrollView>
-        )}
+      {/* Step dots */}
+      <View style={styles.stepDots}>
+        <View style={[styles.dot, styles.dotInactive]} />
+        <View style={[styles.dot, styles.dotActive, { backgroundColor: primaryColor }]} />
       </View>
 
+      {/* Language label */}
+      <Text style={[styles.langLabel, { color: primaryColor }]}>SELECT YOUR LANGUAGE</Text>
+
+      {/* Language grid */}
+      {languagesLoading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator color={primaryColor} size="large" />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.langList}
+          showsVerticalScrollIndicator={false}
+        >
+          {languages.map(lang => (
+            <LanguageCard
+              key={String(lang.id)}
+              language={lang}
+              isSelected={selectedLanguage === lang.code}
+              primaryColor={primaryColor}
+              onSelect={() => setLanguage(lang.code)}
+            />
+          ))}
+        </ScrollView>
+      )}
+
+      {/* Get Started */}
       <View style={styles.footer}>
         <Pressable
           style={[
-            styles.primaryButton,
+            styles.primaryBtn,
             { backgroundColor: primaryColor },
-            !selectedLanguage && styles.disabledButton,
+            !selectedLanguage && styles.primaryBtnDisabled,
           ]}
-          onPress={handleComplete}
+          onPress={handleGetStarted}
           disabled={!selectedLanguage}
           accessibilityRole="button"
         >
-          <Text style={styles.primaryButtonText}>Get Started</Text>
+          <Text style={styles.primaryBtnText}>Get Started</Text>
         </Pressable>
       </View>
     </View>
@@ -288,119 +266,114 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#FFFFFF',
   },
+
+  // Header
   header: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-    paddingTop: Platform.OS === 'ios' ? 56 : 20,
     alignItems: 'center',
+    paddingTop: Platform.OS === 'ios' ? 56 : 24,
+    paddingBottom: 24,
+    gap: 4,
   },
-  headerTitle: {
-    color: '#FFFFFF',
-    fontSize: 22,
-    fontWeight: '700',
+  logoEmoji:   { fontSize: 40 },
+  headerTitle: { color: '#FFFFFF', fontSize: 22, fontWeight: '700' },
+  headerSub:   { color: 'rgba(255,255,255,0.7)', fontSize: 13 },
+
+  // Step dots
+  stepDots: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    paddingTop: 14,
+    paddingBottom: 4,
   },
+  dot: {
+    height: 6,
+    borderRadius: 3,
+  },
+  dotActive:   { width: 24 },
+  dotInactive: { width: 16, backgroundColor: '#E0E0E0' },
+
+  // Location step
   stepContent: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 32,
+    gap: 12,
   },
-  stepIcon: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  stepTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  stepDescription: {
-    fontSize: 15,
-    color: '#666666',
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 32,
-  },
-  locationError: {
-    fontSize: 13,
-    color: '#B91C1C',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  primaryButton: {
-    width: '100%',
-    paddingVertical: 14,
-    borderRadius: 12,
+  stepIcon:  { fontSize: 48 },
+  stepTitle: { fontSize: 20, fontWeight: '600', color: '#212121', textAlign: 'center' },
+  stepDesc:  { fontSize: 14, color: '#757575', lineHeight: 21, textAlign: 'center' },
+  errorText: { fontSize: 13, color: '#B91C1C', textAlign: 'center' },
+
+  outlineBtn: {
+    marginTop: 4,
+    borderWidth: 1.5,
+    borderRadius: 24,
+    paddingVertical: 12,
+    paddingHorizontal: 28,
     alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
+    minWidth: 180,
   },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+  outlineBtnText: { fontSize: 15, fontWeight: '600' },
+
+  skipBtn:     { paddingVertical: 8 },
+  skipBtnText: { fontSize: 13, color: '#9E9E9E' },
+
+  // Language step
+  langLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 1.8,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 4,
   },
-  secondaryButton: {
-    marginTop: 16,
-    paddingVertical: 10,
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: '500',
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  languageBody: {
-    flex: 1,
-  },
-  loadingContainer: {
+  loadingBox: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
-    fontSize: 14,
-    color: '#666666',
-    marginTop: 12,
-  },
-  languageList: {
+  langList: {
     paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 10,
+    paddingVertical: 8,
+    gap: 8,
   },
-  languageCard: {
-    borderWidth: 2,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+
+  // Language card (row layout)
+  langCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    borderWidth: 1.5,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 10,
+    marginBottom: 2,
   },
-  languageNative: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: '#333333',
-    flex: 1,
+  langIcon: { fontSize: 16 },
+  langTextGroup: { flex: 1 },
+  langPrimary:   { fontSize: 14, fontWeight: '600', color: '#212121' },
+  langSub:       { fontSize: 11, color: '#9E9E9E', marginTop: 1 },
+  checkCircle: {
+    width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
   },
-  languageName: {
-    fontSize: 14,
-    color: '#666666',
-    marginHorizontal: 8,
-  },
-  languageCode: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#999999',
-    width: 32,
-    textAlign: 'right',
-  },
+  checkMark:          { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
+  checkCirclePlaceholder: { width: 20, height: 20 },
+
+  // Shared footer
   footer: {
     paddingHorizontal: 24,
     paddingVertical: 16,
     paddingBottom: Platform.OS === 'ios' ? 32 : 16,
   },
+  primaryBtn: {
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+  },
+  primaryBtnText:     { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  primaryBtnDisabled: { opacity: 0.35 },
 });
