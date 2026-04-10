@@ -80,6 +80,7 @@ object FarmerChat {
                     sdkApiKey = config.sdkApiKey,
                     deviceInfo = deviceInfo,
                     timeoutMs = config.requestTimeoutMs,
+                    aiReadTimeoutMs = config.aiReadTimeoutMs,
                 )
 
                 this.connectivityMonitor = ConnectivityMonitor(appCtx).also { it.start() }

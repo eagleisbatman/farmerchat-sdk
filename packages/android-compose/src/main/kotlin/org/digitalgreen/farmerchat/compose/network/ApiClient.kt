@@ -31,6 +31,7 @@ internal class ApiClient(
     private val sdkApiKey: String,
     private val deviceInfo: String,
     private val timeoutMs: Int = 15_000,
+    private val aiReadTimeoutMs: Int = 60_000,
 ) {
 
     private companion object {
@@ -106,18 +107,22 @@ internal class ApiClient(
     /**
      * POST JSON body; returns raw response string.
      * Handles 401 by triggering token refresh and retrying once.
+     *
+     * @param readTimeout Override read timeout for this call (defaults to [timeoutMs]).
+     *                    Pass [aiReadTimeoutMs] for inference endpoints.
      */
     private suspend fun postJson(
         path: String,
         body: JSONObject,
         skipRefresh: Boolean = false,
+        readTimeout: Int = timeoutMs,
     ): String = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
             connection = openConnection(path).apply {
                 requestMethod = "POST"
                 connectTimeout = timeoutMs
-                readTimeout = timeoutMs
+                this.readTimeout = readTimeout
                 doOutput = true
                 applyAuthHeaders(this)
             }
@@ -128,8 +133,7 @@ internal class ApiClient(
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED && !skipRefresh && path !in SKIP_REFRESH_PATHS) {
                 connection.disconnect()
                 refreshTokens()
-                // Retry once with new token
-                return@withContext postJson(path, body, skipRefresh = true)
+                return@withContext postJson(path, body, skipRefresh = true, readTimeout = readTimeout)
             }
             if (code !in 200..299) throw ApiException(code, readErrorBody(connection))
             readBody(connection)
@@ -141,11 +145,14 @@ internal class ApiClient(
     /**
      * GET with optional query params; returns raw response string.
      * Handles 401 by triggering token refresh and retrying once.
+     *
+     * @param readTimeout Override read timeout for this call (defaults to [timeoutMs]).
      */
     private suspend fun getJson(
         path: String,
         params: Map<String, String> = emptyMap(),
         skipRefresh: Boolean = false,
+        readTimeout: Int = timeoutMs,
     ): String = withContext(Dispatchers.IO) {
         var connection: HttpURLConnection? = null
         try {
@@ -153,14 +160,14 @@ internal class ApiClient(
             connection = openConnection(fullPath).apply {
                 requestMethod = "GET"
                 connectTimeout = timeoutMs
-                readTimeout = timeoutMs
+                this.readTimeout = readTimeout
                 applyAuthHeaders(this)
             }
             val code = connection.responseCode
             if (code == HttpURLConnection.HTTP_UNAUTHORIZED && !skipRefresh && path !in SKIP_REFRESH_PATHS) {
                 connection.disconnect()
                 refreshTokens()
-                return@withContext getJson(path, params, skipRefresh = true)
+                return@withContext getJson(path, params, skipRefresh = true, readTimeout = readTimeout)
             }
             if (code !in 200..299) throw ApiException(code, readErrorBody(connection))
             readBody(connection)
@@ -361,7 +368,7 @@ internal class ApiClient(
                 put("retry", retry)
                 if (transcriptionId != null) put("transcription_id", transcriptionId)
             }
-            val text = postJson(EP_TEXT_PROMPT, body)
+            val text = postJson(EP_TEXT_PROMPT, body, readTimeout = aiReadTimeoutMs)
             TextPromptResponse.fromJson(JSONObject(text))
         } catch (e: Exception) {
             Log.w(TAG, "sendTextPrompt failed: ${e.message}")
@@ -400,7 +407,7 @@ internal class ApiClient(
                 if (longitude != null) put("longitude", longitude)
                 if (query != null) put("query", query)
             }
-            val text = postJson(EP_IMAGE_ANALYSIS, body)
+            val text = postJson(EP_IMAGE_ANALYSIS, body, readTimeout = aiReadTimeoutMs)
             PlantixResponse.fromJson(JSONObject(text))
         } catch (e: Exception) {
             Log.w(TAG, "imageAnalysis failed: ${e.message}")
@@ -458,7 +465,7 @@ internal class ApiClient(
                 put("text", text)
                 put("user_id", userId)
             }
-            val responseText = postJson(EP_SYNTHESISE_AUDIO, body)
+            val responseText = postJson(EP_SYNTHESISE_AUDIO, body, readTimeout = aiReadTimeoutMs)
             SynthesiseAudioResponse.fromJson(JSONObject(responseText))
         } catch (e: Exception) {
             Log.w(TAG, "synthesiseAudio failed: ${e.message}")
@@ -489,7 +496,7 @@ internal class ApiClient(
                 put("triggered_input_type", "audio")
                 put("editable_transcription", "True")
             }
-            val text = postJson(EP_TRANSCRIBE_AUDIO, body)
+            val text = postJson(EP_TRANSCRIBE_AUDIO, body, readTimeout = aiReadTimeoutMs)
             GetVoiceResponse.fromJson(JSONObject(text))
         } catch (e: Exception) {
             Log.w(TAG, "transcribeAudio failed: ${e.message}")
