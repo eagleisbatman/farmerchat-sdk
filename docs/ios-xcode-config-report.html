@@ -5,6 +5,36 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FarmerChat iOS – Xcode Configuration Report</title>
 <style>
+  /* ── Save PDF button ──────────────────────────── */
+  .save-bar {
+    position: fixed;
+    top: 16px; right: 20px;
+    z-index: 999;
+    display: flex;
+    gap: 8px;
+  }
+  .btn-pdf {
+    display: flex; align-items: center; gap: 8px;
+    background: #005f9e;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 18px;
+    font-size: .85rem;
+    font-weight: 600;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    cursor: pointer;
+    box-shadow: 0 4px 14px rgba(0,95,158,.40);
+    transition: background .15s, transform .1s, box-shadow .15s;
+    letter-spacing: .1px;
+  }
+  .btn-pdf:hover { background: #004880; box-shadow: 0 6px 18px rgba(0,95,158,.50); }
+  .btn-pdf:active { transform: scale(.97); }
+  .btn-pdf svg { flex-shrink: 0; }
+  @media print {
+    .save-bar { display: none; }
+  }</style>
+<style>
   /* ── Reset & Base ─────────────────────────────── */
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { font-size: 14px; }
@@ -198,12 +228,15 @@
     color: #9ca3af;
   }
 
-  /* ── Print ────────────────────────────────────── */
+  /* ── Print / PDF ──────────────────────────────── */
   @media print {
     body { background: #fff; padding: 0; }
-    .page { box-shadow: none; border-radius: 0; }
-    pre { border: 1px solid #e4e7ed; }
+    .page { box-shadow: none; border-radius: 0; max-width: 100%; }
+    pre { border: 1px solid #e4e7ed; white-space: pre-wrap; word-break: break-all; }
     .issue { page-break-inside: avoid; }
+    .steps li { page-break-inside: avoid; }
+    .save-bar { display: none !important; }
+    a { color: inherit; text-decoration: none; }
   }
 </style>
 </head>
@@ -498,5 +531,39 @@ packages/ios-uikit/Package.swift      <span class="cmt">← SDK library (unchang
   </div>
 
 </div><!-- /.page -->
+
+<!-- ══ SAVE AS PDF BAR ════════════════════════════════════ -->
+<div class="save-bar">
+  <button class="btn-pdf" onclick="savePDF()">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="7 10 12 15 17 10"/>
+      <line x1="12" y1="15" x2="12" y2="3"/>
+    </svg>
+    Save as PDF
+  </button>
+</div>
+
+<script>
+  function savePDF() {
+    const btn = document.querySelector('.btn-pdf');
+    const original = btn.innerHTML;
+
+    // Feedback while printing dialog opens
+    btn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> Opening…';
+    btn.disabled = true;
+
+    // Set suggested filename via document title (browsers use it as default PDF name)
+    const prev = document.title;
+    document.title = 'FarmerChat-iOS-Xcode-Config-Report';
+
+    setTimeout(() => {
+      window.print();
+      document.title = prev;
+      btn.innerHTML = original;
+      btn.disabled = false;
+    }, 120);
+  }
+</script>
 </body>
 </html>
