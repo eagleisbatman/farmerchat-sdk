@@ -1,6 +1,7 @@
 package org.digitalgreen.farmerchat.compose
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
 import org.digitalgreen.farmerchat.compose.crash.CrashBridge
 import org.digitalgreen.farmerchat.compose.network.ApiClient
@@ -68,6 +69,29 @@ object FarmerChat {
      * Check if the SDK has been initialized.
      */
     fun isInitialized(): Boolean = isInitialized
+
+    /**
+     * Launch the full-screen FarmerChat UI.
+     *
+     * Requires [initialize] to have been called first. Safe to call from any context —
+     * all errors are caught internally and the SDK will never crash the host app.
+     *
+     * @param context Any Context (Activity, Application, etc.). The chat screen opens as
+     *   a new Activity on top of the current task.
+     */
+    fun presentChat(context: Context) {
+        if (!isInitialized) {
+            Log.w(TAG, "presentChat() called before initialize() — ignoring")
+            return
+        }
+        try {
+            val intent = FarmerChatActivity.createIntent(context)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "presentChat failed", e)
+        }
+    }
 
     /**
      * Returns the current SDK configuration, or defaults if not yet initialized.

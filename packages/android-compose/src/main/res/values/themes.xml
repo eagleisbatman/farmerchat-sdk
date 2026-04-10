@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Minimal no-action-bar theme for FarmerChatActivity.
+        The actual visual theming is handled entirely by FarmerChatTheme (Compose).
+    -->
+    <style name="Theme.FarmerChatCompose" parent="android:Theme.NoTitleBar">
+    </style>
+</resources>

@@ -3,5 +3,15 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <application>
+        <activity
+            android:name=".FarmerChatActivity"
+            android:theme="@style/Theme.FarmerChatCompose"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+    </application>
 
 </manifest>

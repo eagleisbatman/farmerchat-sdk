@@ -22,7 +22,7 @@ The SDK is online-only (no offline/local storage) and designed to be < 3 MB per 
 ## Tech Stack
 - **Package manager:** pnpm 10.x (workspace)
 - **Build orchestration:** Turborepo 2.8.x
-- **Android:** Kotlin 2.3.x, Gradle (KTS), AGP 9.1+, Compose BOM 2026.03+
+- **Android:** Kotlin 2.3.x, Gradle (KTS), AGP 8.13.0, Compose BOM 2026.03+
 - **iOS:** Swift 5.9+, Xcode 16+, SPM
 - **React Native:** TypeScript, Expo SDK 55+, Expo Modules API
 - **Web:** TypeScript, tsup bundler

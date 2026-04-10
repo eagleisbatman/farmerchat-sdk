@@ -1,0 +1,14 @@
+# Copy this file to local.properties and fill in your values.
+# local.properties is gitignored — never commit it.
+
+# Path to your Android SDK installation.
+# Android Studio sets this automatically when you open the project.
+# For CLI builds, set it manually:
+#   macOS:   sdk.dir=/Users/<you>/Library/Android/sdk
+#   Linux:   sdk.dir=/home/<you>/Android/Sdk
+#   Windows: sdk.dir=C\:\\Users\\<you>\\AppData\\Local\\Android\\Sdk
+sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk
+
+# Optional: FarmerChat API key for the demo app.
+# Can also be passed as a Gradle property: ./gradlew assembleDebug -PFC_API_KEY=your-key
+# FC_API_KEY=your-api-key-here

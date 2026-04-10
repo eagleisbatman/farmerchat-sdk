@@ -4,7 +4,6 @@ import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.FrameLayout
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.AnimatedVisibility
@@ -221,8 +220,7 @@ private fun ComposeTab() {
         org.digitalgreen.farmerchat.compose.FarmerChatFAB(
             modifier = Modifier.align(Alignment.BottomEnd),
             onClick = {
-                // TODO: Replace with Compose SDK's presentChat() when available
-                Toast.makeText(context, "Compose chat coming soon", Toast.LENGTH_SHORT).show()
+                org.digitalgreen.farmerchat.compose.FarmerChat.presentChat(context)
             },
         )
     }
