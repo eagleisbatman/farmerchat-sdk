@@ -81,7 +81,7 @@ internal fun ResponseCard(
 
         Spacer(Modifier.width(10.dp))
 
-        Column(modifier = Modifier.widthIn(max = (0.88f * 1000).dp)) {
+        Column(modifier = Modifier.fillMaxWidth(0.88f)) {
             // AI bubble
             Box(
                 modifier = Modifier
