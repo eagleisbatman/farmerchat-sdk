@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -250,7 +249,7 @@ private fun UserMessageBubble(message: ChatViewModel.ChatMessage) {
     ) {
         Box(
             modifier = Modifier
-                .widthIn(max = (0.72f * 400).dp)
+                .fillMaxWidth(0.72f)
                 .clip(RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp, bottomStart = 18.dp, bottomEnd = 4.dp))
                 .background(SdkUserBubble)
                 .padding(horizontal = 14.dp, vertical = 10.dp),

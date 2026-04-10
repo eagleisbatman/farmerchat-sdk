@@ -206,54 +206,66 @@ internal class ChatViewModel : ViewModel() {
                     val sendStartMs = System.currentTimeMillis()
                     val clientMessageId = UUID.randomUUID().toString()
 
-                    val response = if (imageData != null) {
-                        // Image analysis
+                    if (imageData != null) {
+                        // Image analysis path
                         val plantix = client.imageAnalysis(
                             conversationId = convId,
                             base64Image = imageData,
                             imageName = "image_${UUID.randomUUID()}.jpg",
                         )
+                        val localId = UUID.randomUUID().toString()
+                        val inlineFollowUps = plantix.followUpQuestions?.map { fq ->
+                            FollowUp(id = fq.followUpQuestionId, question = fq.question ?: "", sequence = fq.sequence)
+                        } ?: emptyList()
                         appendMessage(
                             ChatMessage(
-                                id = UUID.randomUUID().toString(),
+                                id = localId,
                                 role = "assistant",
                                 text = plantix.response,
                                 timestamp = System.currentTimeMillis(),
-                                followUps = plantix.followUpQuestions?.map { fq ->
-                                    FollowUp(id = fq.followUpQuestionId, question = fq.question ?: "", sequence = fq.sequence)
-                                } ?: emptyList(),
+                                followUps = inlineFollowUps,
                                 contentProviderLogo = plantix.contentProviderLogo,
                                 hideTtsSpeaker = plantix.hideTtsSpeaker ?: false,
                                 serverMessageId = plantix.messageId,
                             )
                         )
-                        null
+                        // Fetch follow-ups from the dedicated endpoint if not supplied inline
+                        if (inlineFollowUps.isEmpty() && plantix.messageId.isNotEmpty()) {
+                            fetchAndAppendFollowUps(localId, plantix.messageId)
+                        }
                     } else {
-                        // Text / follow-up
-                        client.sendTextPrompt(
+                        // Text / follow-up path
+                        val response = client.sendTextPrompt(
                             query = text,
                             conversationId = convId,
                             messageId = clientMessageId,
                             triggeredInputType = inputMethod,
                         )
-                    }
-
-                    if (response != null) {
                         val answerText = response.response ?: response.message ?: ""
+                        val localId = UUID.randomUUID().toString()
+                        val inlineFollowUps = response.followUpQuestions?.map { fq ->
+                            FollowUp(id = fq.followUpQuestionId, question = fq.question ?: "", sequence = fq.sequence)
+                        } ?: emptyList()
                         appendMessage(
                             ChatMessage(
-                                id = UUID.randomUUID().toString(),
+                                id = localId,
                                 role = "assistant",
                                 text = answerText,
                                 timestamp = System.currentTimeMillis(),
-                                followUps = response.followUpQuestions?.map { fq ->
-                                    FollowUp(id = fq.followUpQuestionId, question = fq.question ?: "", sequence = fq.sequence)
-                                } ?: emptyList(),
+                                followUps = inlineFollowUps,
                                 contentProviderLogo = response.contentProviderLogo,
                                 hideTtsSpeaker = response.hideTtsSpeaker ?: false,
                                 serverMessageId = response.messageId,
                             )
                         )
+                        // Fetch follow-ups from the dedicated endpoint if not supplied inline
+                        // and the server hasn't explicitly hidden them
+                        if (inlineFollowUps.isEmpty() &&
+                            response.hideFollowUpQuestion != true &&
+                            !response.messageId.isNullOrEmpty()
+                        ) {
+                            fetchAndAppendFollowUps(localId, response.messageId!!)
+                        }
                     }
 
                     _chatState.value = ChatUiState.Complete
@@ -454,6 +466,39 @@ internal class ChatViewModel : ViewModel() {
             val cap = config.maxMessagesInMemory
             val newList = list + message
             if (newList.size > cap) newList.takeLast(cap) else newList
+        }
+    }
+
+    /**
+     * Update the `followUps` field of an existing message in place.
+     * Called after [fetchAndAppendFollowUps] completes.
+     */
+    private fun updateMessageFollowUps(localMessageId: String, followUps: List<FollowUp>) {
+        _messages.update { list ->
+            list.map { msg -> if (msg.id == localMessageId) msg.copy(followUps = followUps) else msg }
+        }
+    }
+
+    /**
+     * Fetch follow-up questions for a just-delivered AI message and attach them.
+     * Runs in a separate coroutine so the UI is not blocked — follow-ups appear
+     * shortly after the answer bubble.
+     */
+    private fun fetchAndAppendFollowUps(localMessageId: String, serverMessageId: String) {
+        viewModelScope.launch {
+            try {
+                val client = apiClient ?: return@launch
+                val resp = client.getFollowUpQuestions(messageId = serverMessageId)
+                val followUps = resp.questions?.mapNotNull { fq ->
+                    val q = fq.question ?: return@mapNotNull null
+                    FollowUp(id = fq.followUpQuestionId, question = q, sequence = fq.sequence)
+                } ?: return@launch
+                if (followUps.isNotEmpty()) {
+                    updateMessageFollowUps(localMessageId, followUps)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "fetchFollowUps failed (non-fatal): ${e.message}")
+            }
         }
     }
 
