@@ -19,8 +19,8 @@ fun FarmerChatTheme(
     config: FarmerChatConfig = FarmerChat.getConfig(),
     content: @Composable () -> Unit,
 ) {
-    val primary = if (config.primaryColor != 0) Color(config.primaryColor) else SdkGreen500
-    val primaryDark = if (config.secondaryColor != 0) Color(config.secondaryColor) else SdkGreen800
+    val primary = if (config.primaryColor != 0L) Color(config.primaryColor) else SdkGreen500
+    val primaryDark = if (config.secondaryColor != 0L) Color(config.secondaryColor) else SdkGreen800
 
     val colorScheme = darkColorScheme(
         primary             = primary,
