@@ -1,0 +1,940 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FarmerChat SDK — Android Studio Configuration Report</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,600;0,700;1,400&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #1a6b3c;
+    --green-light: #e8f5ee;
+    --green-mid: #2d9e5f;
+    --amber: #b45309;
+    --amber-light: #fef3c7;
+    --red: #b91c1c;
+    --red-light: #fee2e2;
+    --blue: #1d4ed8;
+    --blue-light: #eff6ff;
+    --ink: #111827;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --bg: #f9fafb;
+    --white: #ffffff;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body {
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    font-size: 14px;
+  }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: white; font-size: 12px; }
+    .no-print { display: none !important; }
+    .page { box-shadow: none; margin: 0; border-radius: 0; }
+    .page-break { page-break-before: always; }
+    h2.section-title { page-break-after: avoid; }
+    .issue-card { page-break-inside: avoid; }
+  }
+
+  /* ── LAYOUT ── */
+  .page {
+    max-width: 860px;
+    margin: 32px auto;
+    background: var(--white);
+    box-shadow: 0 4px 32px rgba(0,0,0,.10);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ── */
+  .header {
+    background: var(--green);
+    color: white;
+    padding: 40px 48px 32px;
+    position: relative;
+    overflow: hidden;
+  }
+  .header::after {
+    content: '';
+    position: absolute;
+    right: -60px; bottom: -60px;
+    width: 240px; height: 240px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.06);
+  }
+  .header::before {
+    content: '';
+    position: absolute;
+    right: 60px; bottom: -30px;
+    width: 140px; height: 140px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.04);
+  }
+  .header-tag {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,.65);
+    margin-bottom: 10px;
+  }
+  .header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+  .header-meta {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+  }
+  .meta-pill {
+    background: rgba(255,255,255,.15);
+    border: 1px solid rgba(255,255,255,.25);
+    border-radius: 20px;
+    padding: 4px 14px;
+    font-size: 12px;
+    font-family: var(--mono);
+  }
+
+  /* ── SUMMARY BAR ── */
+  .summary-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border-bottom: 1px solid var(--border);
+  }
+  .summary-item {
+    padding: 22px 24px;
+    border-right: 1px solid var(--border);
+    text-align: center;
+  }
+  .summary-item:last-child { border-right: none; }
+  .summary-number {
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1;
+    margin-bottom: 4px;
+  }
+  .summary-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .s-green { color: var(--green); }
+  .s-red   { color: var(--red); }
+  .s-amber { color: var(--amber); }
+  .s-blue  { color: var(--blue); }
+
+  /* ── BODY ── */
+  .body { padding: 40px 48px; }
+
+  /* ── SECTION ── */
+  h2.section-title {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 36px 0 16px;
+    padding-bottom: 8px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h2.section-title span { color: var(--green); }
+  h2.section-title:first-of-type { margin-top: 0; }
+
+  /* ── ISSUE CARD ── */
+  .issue-card {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .issue-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    flex-shrink: 0;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 700;
+    margin-top: 1px;
+  }
+  .badge-red    { background: var(--red-light);   color: var(--red); }
+  .badge-amber  { background: var(--amber-light);  color: var(--amber); }
+  .badge-green  { background: var(--green-light);  color: var(--green); }
+  .badge-blue   { background: var(--blue-light);   color: var(--blue); }
+
+  .issue-title {
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+    margin-bottom: 3px;
+  }
+  .issue-subtitle {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+  }
+  .status-chip {
+    margin-left: auto;
+    flex-shrink: 0;
+    padding: 3px 12px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+  }
+  .chip-fixed  { background: var(--green-light);  color: var(--green); }
+  .chip-warn   { background: var(--amber-light);  color: var(--amber); }
+
+  .issue-body { padding: 16px 20px; }
+  .issue-body p { margin-bottom: 10px; font-size: 13.5px; line-height: 1.65; }
+  .issue-body p:last-child { margin-bottom: 0; }
+
+  /* ── CODE BLOCK ── */
+  .code-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .10em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 4px;
+    margin-top: 12px;
+  }
+  pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: 6px;
+    padding: 14px 18px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+    overflow-x: auto;
+    margin-bottom: 8px;
+  }
+  pre .kw  { color: #7dd3fc; }
+  pre .fn  { color: #a5f3fc; }
+  pre .st  { color: #86efac; }
+  pre .cm  { color: #64748b; font-style: italic; }
+  pre .hl  { background: rgba(250,204,21,.15); border-left: 3px solid #fbbf24; padding-left: 4px; display: block; margin-left: -18px; padding-left: 15px; }
+
+  /* ── FILE TABLE ── */
+  .file-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  .file-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 8px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  .file-table td {
+    padding: 9px 12px;
+    font-size: 12.5px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: top;
+  }
+  .file-table tr:last-child td { border-bottom: none; }
+  .file-table tr:hover td { background: var(--bg); }
+  .mono { font-family: var(--mono); font-size: 11.5px; }
+  .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; }
+  .tag-new      { background: var(--blue-light);   color: var(--blue); }
+  .tag-modified { background: var(--amber-light);  color: var(--amber); }
+  .tag-fixed    { background: var(--green-light);  color: var(--green); }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 12px 0;
+    font-size: 13px;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .callout-green { background: var(--green-light); border-left: 3px solid var(--green-mid); }
+  .callout-amber { background: var(--amber-light); border-left: 3px solid #d97706; }
+  .callout-blue  { background: var(--blue-light);  border-left: 3px solid #3b82f6; }
+  .callout-icon  { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+
+  /* ── STEPS ── */
+  .steps { counter-reset: step; list-style: none; margin-top: 8px; }
+  .steps li {
+    counter-increment: step;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 13.5px;
+  }
+  .steps li:last-child { border-bottom: none; }
+  .steps li::before {
+    content: counter(step);
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    background: var(--green);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    margin-top: 2px;
+  }
+
+  /* ── FOOTER ── */
+  .footer {
+    border-top: 1px solid var(--border);
+    padding: 20px 48px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  /* ── PRINT BUTTON ── */
+  .print-btn {
+    display: block;
+    text-align: center;
+    margin: 16px auto 0;
+    padding: 10px 28px;
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-family: var(--sans);
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: .02em;
+  }
+  .print-btn:hover { background: #155e34; }
+</style>
+</head>
+<body>
+
+<button class="print-btn no-print" onclick="window.print()">⬇ Save as PDF (Print → Save as PDF)</button>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="header">
+    <div class="header-tag">Configuration Report</div>
+    <h1>FarmerChat SDK<br>Android Studio Setup</h1>
+    <div class="header-meta">
+      <span class="meta-pill">Branch: feature/android-studio-config</span>
+      <span class="meta-pill">Date: April 9, 2026</span>
+      <span class="meta-pill">Project: farmerchat-sdk</span>
+      <span class="meta-pill">Target: apps/demo-android</span>
+    </div>
+  </div>
+
+  <!-- SUMMARY BAR -->
+  <div class="summary-bar">
+    <div class="summary-item">
+      <div class="summary-number s-red">10</div>
+      <div class="summary-label">Issues Found</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number s-green">10</div>
+      <div class="summary-label">Issues Fixed</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number s-amber">9</div>
+      <div class="summary-label">Files Modified</div>
+    </div>
+    <div class="summary-item">
+      <div class="summary-number s-blue">1</div>
+      <div class="summary-label">File Added</div>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- CONTEXT -->
+    <h2 class="section-title"><span>01</span> Background</h2>
+
+    <p style="font-size:13.5px;line-height:1.7;margin-bottom:12px;">
+      The <strong>FarmerChat SDK</strong> is a pnpm/Turborepo monorepo that ships Android libraries as two separate packages
+      (<code class="mono">packages/android-compose</code> and <code class="mono">packages/android-views</code>) plus a demo
+      application at <code class="mono">apps/demo-android</code>. Each package was originally configured as a
+      <em>standalone</em> Gradle project; opening any of them in Android Studio as a multi-module project exposed
+      several configuration gaps.
+    </p>
+
+    <div class="callout callout-blue">
+      <span class="callout-icon">ℹ</span>
+      <div><strong>Correct entry point for Android Studio:</strong> Open <code class="mono">apps/demo-android/</code> — not the monorepo root.
+      The demo app's <code class="mono">settings.gradle.kts</code> already wires the two library packages as sub-projects via relative
+      <code class="mono">projectDir</code> paths.</div>
+    </div>
+
+    <!-- ISSUES -->
+    <h2 class="section-title" style="margin-top:36px;"><span>02</span> Issues Found &amp; Fixed</h2>
+
+    <!-- ISSUE 1 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">1</div>
+        <div>
+          <div class="issue-title">Incomplete version catalog — missing 10+ library/plugin entries</div>
+          <div class="issue-subtitle">apps/demo-android/gradle/libs.versions.toml</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p>When Android Studio opens <code class="mono">apps/demo-android</code> as the root Gradle project, its
+        version catalog (<code class="mono">gradle/libs.versions.toml</code>) becomes the <em>only</em> catalog for
+        all three modules. The two sub-projects (<code class="mono">:android-compose</code>,
+        <code class="mono">:android-views</code>) have their own standalone catalogs which are
+        <strong>silently ignored</strong> in multi-project builds. Their <code class="mono">libs.*</code> references
+        therefore resolved against the demo-android catalog — which was missing every entry the libraries needed.</p>
+
+        <div class="code-label">Missing entries (before fix)</div>
+        <pre><span class="cm"># Versions not present:</span>
+coroutines, navigation, junit5
+
+<span class="cm"># Libraries not present:</span>
+compose-material-icons       <span class="cm"># android-compose → libs.compose.material.icons</span>
+lifecycle-viewmodel-compose  <span class="cm"># android-compose</span>
+lifecycle-viewmodel          <span class="cm"># android-views</span>
+lifecycle-runtime            <span class="cm"># android-views</span>
+navigation-fragment          <span class="cm"># android-views</span>
+navigation-ui                <span class="cm"># android-views</span>
+coroutines-android           <span class="cm"># both libraries</span>
+coroutines-test              <span class="cm"># android-compose tests</span>
+junit5                       <span class="cm"># both libraries</span>
+
+<span class="cm"># Plugins not present:</span>
+android-library              <span class="cm"># both library modules use alias(libs.plugins.android.library)</span></pre>
+        <p>All entries were added to the demo-android catalog so the multi-module build resolves correctly.</p>
+      </div>
+    </div>
+
+    <!-- ISSUE 2 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">2</div>
+        <div>
+          <div class="issue-title">Plugin classpath conflict — com.android.library "unknown version"</div>
+          <div class="issue-subtitle">apps/demo-android/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Error:</strong> <em>"The request for this plugin could not be satisfied because the plugin is
+        already on the classpath with an unknown version, so compatibility cannot be checked."</em></p>
+        <p>Both <code class="mono">com.android.application</code> and <code class="mono">com.android.library</code>
+        live in the same AGP jar (<code class="mono">com.android.tools.build:gradle:8.13.0</code>). When the root
+        project applies <code class="mono">com.android.application</code>, Gradle loads the entire AGP jar but
+        only registers the version for <em>that one plugin ID</em>. Sub-projects then request
+        <code class="mono">com.android.library:8.13.0</code> — Gradle sees the class already on the classpath
+        with no tracked version and throws the compatibility error.</p>
+
+        <div class="code-label">Fix — declare android.library with apply false in root build.gradle.kts</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.application)
+<span class="hl">    alias(libs.plugins.android.library) <span class="kw">apply false</span>   <span class="cm">// registers version; not applied to root</span></span>
+    <span class="fn">alias</span>(libs.plugins.kotlin.compose)
+}</pre>
+        <p><code class="mono">apply false</code> tells Gradle to register the plugin and its version (8.13.0) in
+        the registry without applying it to the root project. Sub-projects can then apply
+        <code class="mono">com.android.library</code> with the known version, and the compatibility check passes.</p>
+      </div>
+    </div>
+
+    <!-- ISSUE 3 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-amber">3</div>
+        <div>
+          <div class="issue-title">JUnit 5 tests silently skipped — useJUnitPlatform() not configured</div>
+          <div class="issue-subtitle">packages/android-compose/build.gradle.kts · packages/android-views/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p>Both library modules declare <code class="mono">testImplementation(libs.junit5)</code> but had no
+        instruction for Gradle to use the JUnit Platform engine. Without this, Gradle's default JUnit 4 runner
+        discovers zero tests and reports success — silently discarding all JUnit 5 test cases.</p>
+
+        <div class="code-label">Fix added to both library build.gradle.kts files</div>
+        <pre><span class="fn">android</span> {
+    <span class="cm">// ... existing config ...</span>
+
+<span class="hl">    testOptions {
+        unitTests.all {
+            it.useJUnitPlatform()
+        }
+    }</span>
+}</pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 4 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-amber">4</div>
+        <div>
+          <div class="issue-title">gradle.properties missing Kotlin style and performance settings</div>
+          <div class="issue-subtitle">apps/demo-android/gradle.properties</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p>The demo app's <code class="mono">gradle.properties</code> had only 3 entries. The two library packages
+        both declare <code class="mono">kotlin.code.style=official</code>, <code class="mono">org.gradle.parallel=true</code>,
+        and <code class="mono">org.gradle.caching=true</code>, which apply to all sub-projects only when set in the
+        root project. Missing these caused slower builds and inconsistent IDE inspection.</p>
+
+        <div class="code-label">Added to apps/demo-android/gradle.properties</div>
+        <pre>android.useAndroidX=true
+android.nonTransitiveRClass=true
+<span class="hl">kotlin.code.style=official</span>
+org.gradle.jvmargs=-Xmx2g -XX:+UseParallelGC
+<span class="hl">org.gradle.parallel=true</span>
+<span class="hl">org.gradle.caching=true</span></pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 5 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-amber">5</div>
+        <div>
+          <div class="issue-title">local.properties not documented — CLI builds fail silently</div>
+          <div class="issue-subtitle">apps/demo-android/local.properties.example  (new file)</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><code class="mono">local.properties</code> is gitignored (correct). Android Studio auto-creates it
+        with <code class="mono">sdk.dir</code> on first open, but CI pipelines and new developers building from
+        CLI have no reference for what to provide. A <code class="mono">local.properties.example</code> template
+        was added to document the required and optional keys.</p>
+
+        <div class="code-label">apps/demo-android/local.properties.example</div>
+        <pre><span class="cm"># Copy to local.properties — never commit the real file</span>
+<span class="hl">sdk.dir=/Users/YOUR_USERNAME/Library/Android/sdk</span>
+<span class="cm"># FC_API_KEY=your-api-key-here   (optional — or pass -PFC_API_KEY=... to Gradle)</span></pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 6 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">6</div>
+        <div>
+          <div class="issue-title">Script compilation error — kotlin { } DSL unavailable in all three modules</div>
+          <div class="issue-subtitle">apps/demo-android/build.gradle.kts · packages/android-compose/build.gradle.kts · packages/android-views/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Errors reproduced in all three build files:</strong></p>
+        <pre><span class="cm">e: build.gradle.kts:26:5: (android-compose / android-views)
+e: build.gradle.kts:36:5: (demo-android)</span>
+None of the following candidates is applicable:
+  fun DependencyHandler.kotlin(module: String, ...): Any
+  fun PluginDependenciesSpec.kotlin(module: String): PluginDependencySpec
+
+Unresolved reference 'compilerOptions'
+Unresolved reference 'jvmTarget'</pre>
+
+        <p>All three <code class="mono">build.gradle.kts</code> files contained a
+        <code class="mono">kotlin&nbsp;{&nbsp;compilerOptions&nbsp;{&nbsp;jvmTarget.set(JVM_17)&nbsp;}&nbsp;}</code>
+        block inside <code class="mono">android&nbsp;{}</code>. This DSL extension is registered by the
+        <strong>Kotlin Android Gradle Plugin</strong> (<code class="mono">org.jetbrains.kotlin.android</code>),
+        which is not applied in this project — AGP's built-in Kotlin is used instead. AGP's built-in Kotlin
+        does <em>not</em> expose the <code class="mono">kotlin&nbsp;{}</code> script extension, so the
+        reference fails at script compilation time in every module.</p>
+
+        <p>The <code class="mono">compileOptions</code> block (already present in all three files) is the
+        correct way to set the JVM target when using AGP's built-in Kotlin — AGP automatically syncs
+        the Kotlin <code class="mono">jvmTarget</code> from <code class="mono">sourceCompatibility /
+        targetCompatibility</code>. The redundant <code class="mono">kotlin&nbsp;{}</code> block was
+        removed from all three files.</p>
+
+        <div class="code-label">Before — in all three build.gradle.kts (caused compilation failure)</div>
+        <pre>    <span class="fn">compileOptions</span> {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+<span class="hl">    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }</span>   <span class="cm">// ← removed from demo-android, android-compose, android-views</span></pre>
+
+        <div class="code-label">After — compileOptions is sufficient; AGP syncs Kotlin jvmTarget automatically</div>
+        <pre>    <span class="fn">compileOptions</span> {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }</pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 7 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">7</div>
+        <div>
+          <div class="issue-title">AGP version incompatible with installed Android Studio (9.1.0 → 8.13.0)</div>
+          <div class="issue-subtitle">apps/demo-android/gradle/libs.versions.toml · packages/android-compose/gradle/libs.versions.toml · packages/android-views/gradle/libs.versions.toml · CLAUDE.md</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Error from Android Studio:</strong> <em>"The project is using an incompatible version
+        (AGP 9.1.0) of the Android Gradle plugin. Latest supported version is AGP 8.13.0."</em></p>
+
+        <p>Android Studio has a built-in compatibility table that maps IDE versions to the maximum AGP
+        they support. When the IDE sees a newer AGP in the version catalog, it blocks the sync entirely
+        before Gradle even runs. The project was authored targeting AGP 9.1.0, but the installed
+        Android Studio only supports up to <strong>AGP 8.13.0</strong>.</p>
+
+        <p>AGP 8.13.0 still includes built-in Kotlin support (introduced in AGP 8.5+), so no other
+        plugin changes were needed — only the version number required updating across all three
+        <code class="mono">libs.versions.toml</code> files that declare the <code class="mono">agp</code>
+        version ref, plus <code class="mono">CLAUDE.md</code> to keep documentation accurate.</p>
+
+        <div class="code-label">Fix — updated in all three version catalogs</div>
+        <pre>[versions]
+<span class="hl">agp = "8.13.0"   <span class="cm"># was "9.1.0" — downgraded to match installed Android Studio</span></span>
+...</pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 8 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">8</div>
+        <div>
+          <div class="issue-title">ViewBinding Java files cannot find Kotlin classes — kotlin-android plugin missing from library modules</div>
+          <div class="issue-subtitle">packages/android-views/build.gradle.kts · packages/android-compose/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Errors in generated ViewBinding files:</strong></p>
+        <pre><span class="cm">FragmentChatBinding.java:24:  </span>package org.digitalgreen.farmerchat.views.ui.views does not exist
+<span class="cm">FragmentChatBinding.java:25:  </span>package org.digitalgreen.farmerchat.views.ui.views does not exist
+<span class="cm">FragmentChatBinding.java:41:  </span>cannot find symbol class ConnectivityBannerView
+<span class="cm">FragmentChatBinding.java:50:  </span>cannot find symbol class InputBarView</pre>
+
+        <p>The Kotlin source files (<code class="mono">ConnectivityBannerView.kt</code>,
+        <code class="mono">InputBarView.kt</code>) exist in
+        <code class="mono">org.digitalgreen.farmerchat.views.ui.views</code>. The error is a
+        <strong>compilation ordering failure</strong>: ViewBinding generates Java source files from XML
+        layouts, and those Java files import the custom Kotlin view classes. For the Java compiler to
+        resolve those imports, the Kotlin sources must already be compiled to <code class="mono">.class</code>
+        files first.</p>
+
+        <p>With AGP 8.13.0, <strong>the built-in Kotlin support is not automatic for library modules
+        without an explicit Kotlin plugin</strong>. <code class="mono">android-views</code> had zero Kotlin
+        plugins — only <code class="mono">android.library</code> — so no Kotlin compilation task was
+        registered. ViewBinding's Java processing therefore ran without Kotlin classes on the classpath.
+        <code class="mono">android-compose</code> had <code class="mono">kotlin.compose</code> (the Compose
+        compiler plugin) but that is a compiler <em>extension</em>, not a full Kotlin Gradle setup;
+        without <code class="mono">kotlin-android</code> as the foundation, it is also incomplete.</p>
+
+        <p>Adding <code class="mono">kotlin-android</code> to both library modules registers the Kotlin
+        compilation tasks, ensuring Kotlin sources are compiled <em>before</em> ViewBinding Java
+        files are compiled. In AGP 8.x this plugin is supported and required; only AGP 9.0+ rejects it
+        as redundant with its own built-in Kotlin.</p>
+
+        <div class="code-label">Fix — android-views/build.gradle.kts</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.library)
+<span class="hl">    alias(libs.plugins.kotlin.android)   <span class="cm">// registers Kotlin compilation tasks</span></span>
+    <span class="fn">id</span>(<span class="st">"maven-publish"</span>)
+}</pre>
+
+        <div class="code-label">Fix — android-compose/build.gradle.kts</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.library)
+<span class="hl">    alias(libs.plugins.kotlin.android)   <span class="cm">// foundation for Kotlin + compose compiler</span></span>
+    <span class="fn">alias</span>(libs.plugins.kotlin.compose)
+    <span class="fn">id</span>(<span class="st">"maven-publish"</span>)
+}</pre>
+
+        <div class="code-label">Fix — apps/demo-android/build.gradle.kts (root registration)</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.application)
+    <span class="fn">alias</span>(libs.plugins.android.library)  <span class="kw">apply false</span>
+<span class="hl">    alias(libs.plugins.kotlin.android)   <span class="kw">apply false</span>   <span class="cm">// registers version for sub-projects</span></span>
+    <span class="fn">alias</span>(libs.plugins.kotlin.compose)
+}</pre>
+
+        <p>With <code class="mono">kotlin-android</code> applied the Kotlin compiler defaults to JVM 21,
+        while <code class="mono">compileOptions</code> targets JVM 17 — Gradle enforces both must match
+        (see Issue #9 for the JVM alignment fix and DSL path taken). The
+        <code class="mono">kotlin-android</code> entry was also added to all three
+        <code class="mono">libs.versions.toml</code> files so both standalone and multi-project builds
+        resolve the plugin correctly.</p>
+      </div>
+    </div>
+
+    <!-- ISSUE 9 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-amber">9</div>
+        <div>
+          <div class="issue-title">JVM target mismatch + kotlinOptions deprecated — Kotlin 21 vs Java 17</div>
+          <div class="issue-subtitle">packages/android-compose/build.gradle.kts · packages/android-views/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Error:</strong> <em>"Inconsistent JVM-target compatibility detected for tasks
+        'compileDebugJavaWithJavac' (17) and 'compileDebugKotlin' (21)."</em></p>
+
+        <p>Once <code class="mono">kotlin-android</code> was applied (Issue #8), the Kotlin compiler
+        took ownership of JVM target selection and defaulted to <strong>JVM 21</strong>
+        (Kotlin 2.3.x default). The Java compiler was still set to JVM 17 via
+        <code class="mono">compileOptions</code>. Gradle's JVM target validation rejects any mismatch.</p>
+
+        <p>The first attempt used <code class="mono">kotlinOptions { jvmTarget = "17" }</code>
+        inside <code class="mono">android {}</code> — this silenced the mismatch error but immediately
+        triggered a <strong>deprecation warning</strong>: <em>"'var jvmTarget: String' is deprecated.
+        Please migrate to the compilerOptions DSL."</em> The <code class="mono">kotlinOptions</code>
+        API was retired in Kotlin 2.x in favour of a top-level <code class="mono">kotlin { }</code>
+        extension block.</p>
+
+        <p>The correct fix is a <strong>top-level</strong> <code class="mono">kotlin { compilerOptions { } }</code>
+        block placed <em>outside</em> <code class="mono">android { }</code>. This is the block provided
+        by <code class="mono">kotlin-android</code> as a project-level extension — distinct from the
+        failed inner-android attempt in Issue #6 (which had no Kotlin plugin at all).</p>
+
+        <div class="code-label">Final fix — top-level block in both library build.gradle.kts files</div>
+        <pre><span class="fn">android</span> {
+    <span class="fn">compileOptions</span> {
+        sourceCompatibility = JavaVersion.VERSION_17   <span class="cm">// Java → JVM 17</span>
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+    <span class="cm">// no kotlinOptions here — deprecated</span>
+}
+
+<span class="hl">kotlin {                                              <span class="cm">// top-level, NOT inside android {}</span>
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)   <span class="cm">// Kotlin → JVM 17</span>
+    }
+}</span></pre>
+      </div>
+    </div>
+
+    <!-- ISSUE 10 -->
+    <div class="issue-card">
+      <div class="issue-header">
+        <div class="badge badge-red">10</div>
+        <div>
+          <div class="issue-title">ClassNotFoundException: MainActivity — kotlin-android not applied to app module</div>
+          <div class="issue-subtitle">apps/demo-android/build.gradle.kts</div>
+        </div>
+        <span class="status-chip chip-fixed">Fixed</span>
+      </div>
+      <div class="issue-body">
+        <p><strong>Runtime crash on launch:</strong></p>
+        <pre>java.lang.RuntimeException: Unable to instantiate activity
+  ComponentInfo{org.digitalgreen.farmerchat.demo/...MainActivity}
+Caused by: java.lang.ClassNotFoundException:
+  Didn't find class "org.digitalgreen.farmerchat.demo.MainActivity"</pre>
+
+        <p><code class="mono">MainActivity.kt</code> exists and is syntactically correct. The APK
+        was installed and Android launched the activity declared in the manifest — but the class
+        was absent from the DEX. This means <strong>Kotlin compilation never ran</strong> for the
+        app module: all <code class="mono">.kt</code> files were silently skipped, producing an APK
+        with only resources and manifest.</p>
+
+        <p>The root cause: in Issue #8, <code class="mono">kotlin-android</code> was added to the
+        root build file with <code class="mono">apply false</code> — intentionally not applied to
+        the root project, only registering its version for sub-projects. But the
+        <strong>app module IS the root project</strong>. With <code class="mono">apply false</code>,
+        no <code class="mono">compileDebugKotlin</code> task was registered for
+        <code class="mono">demo-android</code>, so Gradle built the APK without compiling any
+        Kotlin source.</p>
+
+        <div class="code-label">Before (app module had no Kotlin compilation)</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.application)
+    <span class="fn">alias</span>(libs.plugins.android.library)  <span class="kw">apply false</span>
+<span class="hl">    alias(libs.plugins.kotlin.android)   <span class="kw">apply false</span>   <span class="cm">// ← NOT applied; no Kotlin tasks</span></span>
+    <span class="fn">alias</span>(libs.plugins.kotlin.compose)
+}</pre>
+
+        <div class="code-label">After — kotlin-android applied (no apply false), kotlin.compilerOptions added</div>
+        <pre><span class="kw">plugins</span> {
+    <span class="fn">alias</span>(libs.plugins.android.application)
+    <span class="fn">alias</span>(libs.plugins.android.library)  <span class="kw">apply false</span>
+<span class="hl">    alias(libs.plugins.kotlin.android)                <span class="cm">// ← applied; Kotlin tasks registered</span></span>
+    <span class="fn">alias</span>(libs.plugins.kotlin.compose)
+}
+
+<span class="cm">// ... android { } block unchanged ...</span>
+
+<span class="hl">kotlin {
+    compilerOptions {
+        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+    }
+}</span></pre>
+
+        <p>All three modules now have <code class="mono">kotlin-android</code> properly applied (not
+        just registered), ensuring Kotlin compilation tasks exist for every module.</p>
+      </div>
+    </div>
+
+    <!-- PAGE BREAK -->
+    <div class="page-break"></div>
+
+    <!-- FILES CHANGED -->
+    <h2 class="section-title"><span>03</span> Files Changed</h2>
+
+    <table class="file-table">
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Change</th>
+          <th>What changed</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">apps/demo-android/gradle/libs.versions.toml</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Added 3 versions, 9 libraries, <code class="mono">android-library</code> plugin entry (Issue #1); AGP <code class="mono">9.1.0 → 8.13.0</code> (Issue #7); added <code class="mono">kotlin-android</code> plugin entry (Issue #8)</td>
+        </tr>
+        <tr>
+          <td class="mono">apps/demo-android/build.gradle.kts</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Added <code class="mono">android.library apply false</code> (Issue #2); removed inner <code class="mono">kotlin { }</code> block (Issue #6); added <code class="mono">kotlin.android</code> applied (not apply false) + top-level <code class="mono">kotlin { compilerOptions }</code> (Issues #8, #9, #10)</td>
+        </tr>
+        <tr>
+          <td class="mono">apps/demo-android/gradle.properties</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Added <code class="mono">kotlin.code.style</code>, parallel build, Gradle caching (Issue #4)</td>
+        </tr>
+        <tr>
+          <td class="mono">apps/demo-android/local.properties.example</td>
+          <td><span class="tag tag-new">New</span></td>
+          <td>Template documenting <code class="mono">sdk.dir</code> and optional <code class="mono">FC_API_KEY</code> (Issue #5)</td>
+        </tr>
+        <tr>
+          <td class="mono">packages/android-compose/build.gradle.kts</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Added <code class="mono">testOptions { useJUnitPlatform() }</code> (Issue #3); removed inner <code class="mono">kotlin { }</code> (Issue #6); added <code class="mono">kotlin.android</code> plugin + top-level <code class="mono">kotlin { compilerOptions { jvmTarget = JVM_17 } }</code> (Issues #8, #9)</td>
+        </tr>
+        <tr>
+          <td class="mono">packages/android-views/build.gradle.kts</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Added <code class="mono">testOptions { useJUnitPlatform() }</code> (Issue #3); removed inner <code class="mono">kotlin { }</code> (Issue #6); added <code class="mono">kotlin.android</code> plugin + top-level <code class="mono">kotlin { compilerOptions { jvmTarget = JVM_17 } }</code> (Issues #8, #9)</td>
+        </tr>
+        <tr>
+          <td class="mono">packages/android-compose/gradle/libs.versions.toml</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>AGP <code class="mono">9.1.0 → 8.13.0</code> (Issue #7); added <code class="mono">kotlin-android</code> plugin entry (Issue #8)</td>
+        </tr>
+        <tr>
+          <td class="mono">packages/android-views/gradle/libs.versions.toml</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>AGP <code class="mono">9.1.0 → 8.13.0</code> (Issue #7); added <code class="mono">kotlin-android</code> plugin entry (Issue #8)</td>
+        </tr>
+        <tr>
+          <td class="mono">CLAUDE.md</td>
+          <td><span class="tag tag-modified">Modified</span></td>
+          <td>Tech stack entry updated: <code class="mono">AGP 9.1+</code> → <code class="mono">AGP 8.13.0</code> (Issue #7)</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- HOW TO OPEN -->
+    <h2 class="section-title"><span>04</span> How to Open in Android Studio</h2>
+
+    <ol class="steps">
+      <li>Install an Android Studio version that supports <strong>AGP 8.13.0</strong> (check <em>Help → About</em> to confirm). Ensure Android SDK 36 is installed via SDK Manager.</li>
+      <li>In Android Studio choose <strong>File → Open</strong> and select the folder:<br>
+          <code class="mono">farmerchat-sdk/apps/demo-android/</code> — <em>not</em> the monorepo root.</li>
+      <li>Android Studio will detect <code class="mono">settings.gradle.kts</code> and start Gradle sync. It automatically creates <code class="mono">local.properties</code> with your SDK path.</li>
+      <li>Wait for sync to complete. The project tree will show three modules:
+          <code class="mono">:app (demo-android)</code>, <code class="mono">:android-compose</code>, <code class="mono">:android-views</code>.</li>
+      <li>Select a device/emulator (API 26+ required, matching <code class="mono">minSdk = 26</code>) and press <strong>Run</strong>.</li>
+    </ol>
+
+    <div class="callout callout-amber" style="margin-top:16px;">
+      <span class="callout-icon">⚠</span>
+      <div><strong>API key:</strong> The app builds with a placeholder key (<code class="mono">demo-key</code>) by default.
+      To use a real FarmerChat API key, add <code class="mono">FC_API_KEY=your-key</code> to
+      <code class="mono">apps/demo-android/local.properties</code> before syncing.</div>
+    </div>
+
+    <!-- ARCHITECTURE NOTE -->
+    <h2 class="section-title"><span>05</span> Multi-Project Architecture (Reference)</h2>
+
+    <div class="callout callout-green">
+      <span class="callout-icon">📐</span>
+      <div>
+        <strong>Each Android package is a valid standalone Gradle project AND a sub-project of demo-android.</strong>
+        <br>Standalone builds: run <code class="mono">./gradlew build</code> inside each package directory.
+        <br>Multi-module (Android Studio): open <code class="mono">apps/demo-android/</code> — includes both packages via <code class="mono">projectDir</code> paths.
+      </div>
+    </div>
+
+    <pre style="margin-top:12px;"><span class="cm">// apps/demo-android/settings.gradle.kts</span>
+<span class="fn">include</span>(<span class="st">":android-compose"</span>)
+<span class="fn">include</span>(<span class="st">":android-views"</span>)
+
+<span class="fn">project</span>(<span class="st">":android-compose"</span>).projectDir = <span class="fn">file</span>(<span class="st">"../../packages/android-compose"</span>)
+<span class="fn">project</span>(<span class="st">":android-views"</span>).projectDir   = <span class="fn">file</span>(<span class="st">"../../packages/android-views"</span>)</pre>
+
+    <p style="font-size:12px;color:var(--muted);margin-top:8px;">
+      When sub-projects are included this way, their own <code class="mono">settings.gradle.kts</code> and
+      <code class="mono">gradle/libs.versions.toml</code> are ignored — only the root's (demo-android) catalog applies.
+      This is why the catalog consolidation in Issue #1 was necessary.
+    </p>
+
+  </div><!-- /body -->
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <span>FarmerChat SDK — farmerchat-sdk</span>
+    <span>Branch: feature/android-studio-config · April 9, 2026</span>
+    <span>Digital Green Org</span>
+  </div>
+
+</div><!-- /page -->
+
+</body>
+</html>
