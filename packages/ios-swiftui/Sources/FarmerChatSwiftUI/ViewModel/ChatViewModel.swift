@@ -454,7 +454,10 @@ internal final class ChatViewModel: ObservableObject {
             do {
                 await self.ensureGuestTokens()
                 print("[\(Self.tag)] loadLanguages: guest tokens ready, fetching…")
-                let groups = try await client.getSupportedLanguages()
+                let cc = await TokenStore.shared.countryCode
+                let groups = try await client.getSupportedLanguages(
+                    countryCode: cc.isEmpty ? nil : cc
+                )
                 print("[\(Self.tag)] loadLanguages: received \(groups.flatMap { $0.languages }.count) languages")
                 await MainActor.run {
                     self.availableLanguageGroups = groups
