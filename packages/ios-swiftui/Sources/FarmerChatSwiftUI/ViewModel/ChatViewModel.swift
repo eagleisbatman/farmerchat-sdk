@@ -299,13 +299,50 @@ internal final class ChatViewModel: ObservableObject {
                 await self.ensureGuestTokens()
                 let history = try await client.fetchChatHistory(conversationId: convId)
                 self.conversationId = convId
-                self.messages = history.data.compactMap { self.historyItemToMessage($0) }
+                self.messages = self.processHistoryItems(history.data)
                 self.currentScreen = .chat
             } catch {
                 print("[\(Self.tag)] loadConversation failed: \(error)")
                 self.emitEvent(.error(code: "history_error", message: error.localizedDescription, fatal: false, timestamp: Date()))
             }
         }
+    }
+
+    /// Converts raw history items into ChatMessage objects.
+    /// - Groups items into sections (each starting with a user message type 1/2/11)
+    /// - Reverses section order so oldest conversation appears first (top of screen)
+    /// - Merges type-7 follow_up_questions rows into the preceding AI message bubble
+    private func processHistoryItems(_ items: [ChatHistoryItem]) -> [ChatMessage] {
+        // Build sections
+        var sections: [[ChatHistoryItem]] = []
+        var current: [ChatHistoryItem] = []
+        for item in items {
+            let startsSection = [1, 2, 11].contains(item.messageTypeId)
+            if startsSection && !current.isEmpty {
+                sections.append(current)
+                current = []
+            }
+            current.append(item)
+        }
+        if !current.isEmpty { sections.append(current) }
+
+        // Reverse so oldest section is first
+        let ordered = sections.reversed().flatMap { $0 }
+
+        // Map to ChatMessage, attaching type-7 follow-ups to the preceding AI bubble
+        var result: [ChatMessage] = []
+        for item in ordered {
+            if item.messageTypeId == 7 {
+                guard let qs = item.questions, !qs.isEmpty else { continue }
+                if let lastAiIdx = result.indices.last(where: { result[$0].role == "assistant" }) {
+                    let mapped = qs.map { FollowUp(id: $0.followUpQuestionId, question: $0.question ?? "", sequence: $0.sequence) }
+                    result[lastAiIdx].followUps = mapped
+                }
+            } else if let msg = historyItemToMessage(item) {
+                result.append(msg)
+            }
+        }
+        return result
     }
 
     // MARK: - TTS / STT

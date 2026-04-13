@@ -308,6 +308,9 @@ internal data class SseEvent(
 
 // ── JSON helpers ──────────────────────────────────────────────────────────────
 
+internal fun JSONObject.optStringOrNull(key: String): String? =
+    if (has(key) && !isNull(key)) optString(key).takeIf { it.isNotEmpty() } else null
+
 internal inline fun <T> JSONArray.mapObjects(transform: (JSONObject) -> T): List<T> {
     return (0 until length()).map { transform(getJSONObject(it)) }
 }

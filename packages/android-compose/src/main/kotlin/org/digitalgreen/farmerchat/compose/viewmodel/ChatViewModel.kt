@@ -471,14 +471,59 @@ internal class ChatViewModel : ViewModel() {
                 ensureGuestTokensSuspend()
                 val history = client.getChatHistory(conversationListItem.conversationId)
                 conversationId = conversationListItem.conversationId
-                val msgs = history.data.mapNotNull { item -> historyItemToChatMessage(item) }
-                _messages.value = msgs
+                _messages.value = processHistoryItems(history.data)
                 _currentScreen.value = Screen.Chat
             } catch (e: Exception) {
                 Log.w(TAG, "loadConversation failed: ${e.message}")
                 emitEvent(FarmerChatEvent.Error("history_error", e.message ?: "Failed to load conversation"))
             }
         }
+    }
+
+    /**
+     * Converts raw history items from the API into [ChatMessage] objects.
+     *
+     * The API returns messages newest-first. We group them into sections (each section
+     * begins with a user message) and reverse section order so the oldest section is
+     * displayed at the top of the chat screen.
+     *
+     * Type-7 (follow_up_questions) rows are not rendered as their own bubble; instead
+     * their questions are merged into the follow-ups of the preceding AI message.
+     */
+    private fun processHistoryItems(items: List<ConversationHistoryItem>): List<ChatMessage> {
+        // Group into sections (each starts with a user message type 1/2/11)
+        val sections = mutableListOf<MutableList<ConversationHistoryItem>>()
+        var current = mutableListOf<ConversationHistoryItem>()
+        for (item in items) {
+            if (item.messageTypeId in listOf(1, 2, 11) && current.isNotEmpty()) {
+                sections.add(current)
+                current = mutableListOf()
+            }
+            current.add(item)
+        }
+        if (current.isNotEmpty()) sections.add(current)
+
+        // Reverse so oldest section is shown first (top of screen)
+        val ordered = sections.reversed().flatten()
+
+        // Map to ChatMessage; attach type-7 follow-ups to preceding AI bubble
+        val result = mutableListOf<ChatMessage>()
+        for (item in ordered) {
+            when (item.messageTypeId) {
+                7 -> {
+                    val qs = item.questions ?: continue
+                    val lastAiIdx = result.indexOfLast { it.role == "assistant" }
+                    if (lastAiIdx >= 0) {
+                        val mapped = qs.map { q ->
+                            FollowUp(id = q.followUpQuestionId, question = q.question ?: "", sequence = q.sequence)
+                        }
+                        result[lastAiIdx] = result[lastAiIdx].copy(followUps = mapped)
+                    }
+                }
+                else -> historyItemToChatMessage(item)?.let { result.add(it) }
+            }
+        }
+        return result
     }
 
     // ── TTS / STT ─────────────────────────────────────────────────────────────
@@ -539,7 +584,7 @@ internal class ChatViewModel : ViewModel() {
                     messageReferenceId = UUID.randomUUID().toString(),
                     inputAudioEncodingFormat = audioFormat,
                 )
-                val transcript = if (!transcribeResp.error && transcribeResp.heardInputQuery.isNotBlank())
+                val transcript = if (!transcribeResp.error && transcribeResp.heardInputQuery!!.isNotBlank())
                     transcribeResp.heardInputQuery
                 else {
                     // Transcription failed — update bubble to error

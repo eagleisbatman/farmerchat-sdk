@@ -103,26 +103,28 @@ struct HistoryView: View {
                     let grouped = Dictionary(grouping: filtered) { $0.grouping ?? "Older" }
                     let sortedKeys = grouped.keys.sorted(by: >)
 
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 0) {
-                            ForEach(sortedKeys, id: \.self) { key in
+                    List {
+                        ForEach(sortedKeys, id: \.self) { key in
+                            Section(header:
                                 Text(key.uppercased())
                                     .font(.system(size: 10, weight: .bold))
                                     .foregroundColor(historyLabel)
                                     .kerning(1.5)
-                                    .padding(.horizontal, 20)
-                                    .padding(.top, 12)
-                                    .padding(.bottom, 4)
-
+                            ) {
                                 ForEach(grouped[key] ?? []) { conversation in
                                     ConversationRow(
                                         conversation: conversation,
                                         onTap: { viewModel.loadConversation(conversation) }
                                     )
+                                    .listRowBackground(historyCard)
+                                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                                 }
                             }
                         }
-                        .padding(.bottom, 16)
+                    }
+                    .listStyle(.plain)
+                    .refreshable {
+                        viewModel.loadConversationList()
                     }
                 }
             }

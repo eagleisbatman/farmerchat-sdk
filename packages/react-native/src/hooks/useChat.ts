@@ -337,11 +337,7 @@ export function useChat(): UseChatReturn {
       await ensureTokens();
       const history = await client.getChatHistory(item.conversation_id);
       conversationIdRef.current = item.conversation_id;
-
-      const msgs: ChatMessage[] = history.data
-        .map(historyItemToMessage)
-        .filter((m): m is ChatMessage => m !== null);
-      setMessages(msgs);
+      setMessages(processHistoryItems(history.data));
       setCurrentScreen('chat');
     } catch {
       // Silently fail
@@ -493,6 +489,53 @@ export function useChat(): UseChatReturn {
 // ---------------------------------------------------------------------------
 // Helper
 // ---------------------------------------------------------------------------
+
+/**
+ * Converts raw history items into ChatMessage objects.
+ * - Groups items into sections (each starting with a user message type 1/2/11)
+ * - Reverses section order so oldest conversation appears first (top of screen)
+ * - Merges type-7 follow_up_questions rows into the preceding AI message bubble
+ */
+function processHistoryItems(items: ConversationChatHistoryMessageItem[]): ChatMessage[] {
+  // Build sections (each starts with a user message)
+  const sections: ConversationChatHistoryMessageItem[][] = [];
+  let current: ConversationChatHistoryMessageItem[] = [];
+  for (const item of items) {
+    if ([1, 2, 11].includes(item.message_type_id) && current.length > 0) {
+      sections.push(current);
+      current = [];
+    }
+    current.push(item);
+  }
+  if (current.length > 0) sections.push(current);
+
+  // Reverse so oldest section is shown first (top of screen)
+  const ordered = sections.reverse().flat();
+
+  // Map to ChatMessage, attaching type-7 follow-ups to preceding AI bubble
+  const result: ChatMessage[] = [];
+  for (const item of ordered) {
+    if (item.message_type_id === 7) {
+      const qs = item.questions;
+      if (!qs?.length) continue;
+      const lastAiIdx = result.reduce<number>((idx, m, i) => (m.role === 'assistant' ? i : idx), -1);
+      if (lastAiIdx >= 0) {
+        result[lastAiIdx] = {
+          ...result[lastAiIdx],
+          followUps: qs.map(q => ({
+            follow_up_question_id: q.follow_up_question_id,
+            question: q.question,
+            sequence: q.sequence,
+          })),
+        };
+      }
+    } else {
+      const msg = historyItemToMessage(item);
+      if (msg) result.push(msg);
+    }
+  }
+  return result;
+}
 
 function historyItemToMessage(item: ConversationChatHistoryMessageItem): ChatMessage | null {
   switch (item.message_type_id) {
