@@ -49,7 +49,7 @@ struct NewConversationResponse: Decodable {
 
 // MARK: - Follow-up
 
-struct FollowUpQuestionOption: Decodable {
+struct FollowUpQuestionOption: Decodable, Equatable {
     let followUpQuestionId: String?
     let question: String?
     let sequence: Int?
