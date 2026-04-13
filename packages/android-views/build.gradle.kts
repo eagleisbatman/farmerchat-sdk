@@ -52,6 +52,7 @@ dependencies {
     implementation(libs.coroutines.android)
     implementation(libs.appcompat)
     implementation("androidx.exifinterface:exifinterface:1.3.7")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     testImplementation(libs.junit5)
 }
