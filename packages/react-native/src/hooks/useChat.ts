@@ -339,19 +339,21 @@ export function useChat(): UseChatReturn {
     const client = apiClientRef.current;
     if (!client) return null;
     try {
+      await ensureTokens();
       const userId = await TokenStorage.getUserId();
       const resp = await client.synthesiseAudio({ message_id: serverMessageId, text, user_id: userId });
       return resp.audio ?? null;
     } catch {
       return null;
     }
-  }, []);
+  }, [ensureTokens]);
 
   const transcribeAudio = useCallback(async (base64Audio: string, format = 'AMR'): Promise<string | null> => {
     const client = apiClientRef.current;
     const convId = conversationIdRef.current;
     if (!client || !convId) return null;
     try {
+      await ensureTokens();
       const resp = await client.transcribeAudio({
         conversation_id: convId,
         query: base64Audio,
@@ -364,7 +366,7 @@ export function useChat(): UseChatReturn {
     } catch {
       return null;
     }
-  }, []);
+  }, [ensureTokens]);
 
   // ---------------------------------------------------------------------------
   // Misc
@@ -388,12 +390,13 @@ export function useChat(): UseChatReturn {
     const client = apiClientRef.current;
     if (!client) return;
     try {
+      await ensureTokens();           // tokens must be ready before the languages API call
       const groups = await client.getSupportedLanguages();
       setAvailableLanguageGroups(groups);
     } catch {
       // Non-fatal — language list will remain empty; OnboardingScreen handles this gracefully
     }
-  }, []);
+  }, [ensureTokens]);
 
   return {
     chatState,
