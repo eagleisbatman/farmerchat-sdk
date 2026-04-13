@@ -3,7 +3,7 @@ import os
 
 /// Standalone client used exclusively for guest user initialisation.
 ///
-/// Uses `Authorization: Api-Key <key>` header — the only endpoint
+/// Uses `API-Key: <key>` header — the only endpoint
 /// that does not require a prior JWT token.
 ///
 /// Endpoint: `POST /api/user/initialize_user/`
@@ -36,7 +36,7 @@ struct GuestAPIClient {
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Api-Key \(Self.guestApiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(Self.guestApiKey, forHTTPHeaderField: "API-Key")
         request.httpBody = try JSONEncoder().encode(["device_id": deviceId])
 
         let (data, response) = try await URLSession.shared.data(for: request)
