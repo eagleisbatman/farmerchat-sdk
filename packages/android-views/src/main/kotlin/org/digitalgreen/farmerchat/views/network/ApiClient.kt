@@ -316,6 +316,7 @@ internal class ApiClient(
         messageId: String,
         triggeredInputType: String = "text",
         transcriptionId: String? = null,
+        weatherCtaTriggered: Boolean = false,
     ): TextPromptResponse {
         val body = JSONObject().apply {
             put("query", query)
@@ -323,7 +324,7 @@ internal class ApiClient(
             put("message_id", messageId)
             put("triggered_input_type", triggeredInputType)
             put("use_entity_extraction", true)
-            put("weather_cta_triggered", false)
+            put("weather_cta_triggered", weatherCtaTriggered)
             put("retry", false)
             if (transcriptionId != null) put("transcription_id", transcriptionId)
         }

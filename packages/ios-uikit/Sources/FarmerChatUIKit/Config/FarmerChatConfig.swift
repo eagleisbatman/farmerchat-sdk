@@ -180,6 +180,27 @@ public struct FarmerChatConfig {
     /// (chat opened/closed, queries, responses, errors, etc.).
     public var onEvent: ((FarmerChatEvent) -> Void)?
 
+    // MARK: - Weather Widget
+
+    /// Primary weather text shown in the weather card (e.g. "28°C ☀️").
+    /// When nil the weather widget is hidden entirely.
+    public var weatherTemp: String?
+
+    /// Location label shown below the temperature (e.g. "Coorg, Karnataka").
+    public var weatherLocation: String?
+
+    /// Crop chip text on the weather card (e.g. "Rice").
+    public var cropName: String?
+
+    // MARK: - Country / Region
+
+    /// ISO 3166-1 alpha-2 country code used for the language selection API.
+    /// If blank, the SDK detects it from IP geolocation or SIM/locale.
+    public var countryCode: String
+
+    /// State/province code for more localised language lists (optional).
+    public var stateCode: String?
+
     public init(
         apiKey: String = "",
         baseUrl: String = "https://api.farmerchat.digitalgreen.org",
@@ -200,6 +221,11 @@ public struct FarmerChatConfig {
         sseReconnectAttempts: Int = 1,
         maxImageDimension: Int = 300,
         imageCompressionQuality: Int = 80,
+        weatherTemp: String? = nil,
+        weatherLocation: String? = nil,
+        cropName: String? = nil,
+        countryCode: String = "",
+        stateCode: String? = nil,
         onEvent: ((FarmerChatEvent) -> Void)? = nil
     ) {
         self.apiKey = apiKey
@@ -221,6 +247,11 @@ public struct FarmerChatConfig {
         self.sseReconnectAttempts = sseReconnectAttempts
         self.maxImageDimension = maxImageDimension
         self.imageCompressionQuality = imageCompressionQuality
+        self.weatherTemp = weatherTemp
+        self.weatherLocation = weatherLocation
+        self.cropName = cropName
+        self.countryCode = countryCode
+        self.stateCode = stateCode
         self.onEvent = onEvent
     }
 }

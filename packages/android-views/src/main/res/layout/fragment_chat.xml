@@ -125,6 +125,64 @@
         app:layout_constraintEnd_toEndOf="parent"
         tools:visibility="visible" />
 
+    <!-- Weather Widget (visible when host app provides weatherTemp in config) -->
+    <LinearLayout
+        android:id="@+id/weather_widget"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:padding="12dp"
+        android:background="@drawable/fc_weather_card_bg"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/tv_weather_temp"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFF"
+                android:textStyle="bold"
+                android:textSize="14sp"
+                tools:text="28°C ☀️" />
+
+            <TextView
+                android:id="@+id/tv_weather_location"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#8FA88C"
+                android:textSize="12sp"
+                android:layout_marginTop="2dp"
+                android:visibility="gone"
+                tools:text="📍  Coorg, Karnataka" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tv_crop_name"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="5dp"
+            android:textColor="#4CAF50"
+            android:textSize="12sp"
+            android:background="@drawable/fc_crop_chip_bg"
+            android:visibility="gone"
+            tools:text="🌾  Rice" />
+    </LinearLayout>
+
     <!-- Empty State / Starter questions (visible when no messages) -->
     <LinearLayout
         android:id="@+id/starter_questions_area"
@@ -133,7 +191,7 @@
         android:orientation="vertical"
         android:gravity="center"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
+        app:layout_constraintTop_toBottomOf="@id/weather_widget"
         app:layout_constraintBottom_toTopOf="@id/error_banner"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -171,7 +229,7 @@
         android:layout_height="0dp"
         android:clipToPadding="false"
         android:padding="@dimen/fc_padding_small"
-        app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
+        app:layout_constraintTop_toBottomOf="@id/weather_widget"
         app:layout_constraintBottom_toTopOf="@id/error_banner"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"

@@ -126,8 +126,20 @@ internal final class ChatViewModel: ObservableObject {
 
     // MARK: - Public Actions
 
-    /// Send a text query (optionally with a base64 image).
-    func sendQuery(text: String, inputMethod: String = "text", imageData: String? = nil) {
+    /// Send a weather-context query (tapping the weather widget). Sets weather_cta_triggered = true.
+    func sendWeatherQuery(_ question: String) {
+        sendQuery(text: question, inputMethod: "text", weatherCtaTriggered: true)
+    }
+
+    /// Send a text query (optionally with a base64 image and GPS coordinates from EXIF).
+    func sendQuery(
+        text: String,
+        inputMethod: String = "text",
+        imageData: String? = nil,
+        weatherCtaTriggered: Bool = false,
+        imageLatitude: String? = nil,
+        imageLongitude: String? = nil
+    ) {
         guard let client = apiClient else {
             chatState = .error(code: "sdk_not_initialized",
                                message: "FarmerChat SDK is not initialized",
@@ -169,11 +181,13 @@ internal final class ChatViewModel: ObservableObject {
                 let sendStart = Date()
 
                 if let base64 = imageData {
-                    // Image analysis
+                    // Image analysis — include GPS from EXIF if available
                     let resp = try await client.sendImageAnalysis(
                         conversationId: convId,
                         base64Image: base64,
-                        imageName: "image_\(UUID().uuidString).jpg"
+                        imageName: "image_\(UUID().uuidString).jpg",
+                        latitude: imageLatitude,
+                        longitude: imageLongitude
                     )
                     self.appendMessage(ChatMessage(
                         id: UUID().uuidString,
@@ -194,7 +208,8 @@ internal final class ChatViewModel: ObservableObject {
                         query: text,
                         conversationId: convId,
                         messageId: clientMessageId,
-                        triggeredInputType: inputMethod
+                        triggeredInputType: inputMethod,
+                        weatherCtaTriggered: weatherCtaTriggered
                     )
                     let answerText = resp.response ?? resp.message ?? ""
                     self.appendMessage(ChatMessage(
@@ -357,9 +372,20 @@ internal final class ChatViewModel: ObservableObject {
     }
 
     /// Send a base64 image with optional caption through image_analysis/ endpoint.
-    func sendQueryWithImage(caption: String, base64Image: String) {
-        sendQuery(text: caption.isEmpty ? "Analyze this image" : caption,
-                  inputMethod: "image", imageData: base64Image)
+    /// Optionally pass the source URL so GPS EXIF can be extracted.
+    func sendQueryWithImage(caption: String, base64Image: String, sourceURL: URL? = nil) {
+        if let url = sourceURL, let gps = ImageProcessor.extractGPS(from: url) {
+            sendQuery(
+                text: caption.isEmpty ? "Analyze this image" : caption,
+                inputMethod: "image",
+                imageData: base64Image,
+                imageLatitude: gps.latitude,
+                imageLongitude: gps.longitude
+            )
+        } else {
+            sendQuery(text: caption.isEmpty ? "Analyze this image" : caption,
+                      inputMethod: "image", imageData: base64Image)
+        }
     }
 
     // MARK: - Navigation

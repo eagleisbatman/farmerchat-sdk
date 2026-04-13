@@ -66,6 +66,7 @@ internal class ChatFragment : Fragment() {
     private var isRecording = false
     private var cameraPhotoUri: Uri? = null
     private var selectedImageBase64: String? = null
+    private var selectedImageUri: Uri? = null
 
     // Permission launchers
     private val micPermLauncher = registerForActivityResult(
@@ -80,6 +81,7 @@ internal class ChatFragment : Fragment() {
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let {
+            selectedImageUri = it
             viewLifecycleOwner.lifecycleScope.launch {
                 val b64 = withContext(Dispatchers.IO) { uriToBase64Jpeg(requireContext(), it.toString()) }
                 if (b64 != null) onImageSelected(b64)
@@ -92,6 +94,7 @@ internal class ChatFragment : Fragment() {
     ) { success ->
         if (success) {
             cameraPhotoUri?.let { uri ->
+                selectedImageUri = uri
                 viewLifecycleOwner.lifecycleScope.launch {
                     val b64 = withContext(Dispatchers.IO) { uriToBase64Jpeg(requireContext(), uri.toString()) }
                     if (b64 != null) onImageSelected(b64)
@@ -119,12 +122,48 @@ internal class ChatFragment : Fragment() {
         try {
             applyWindowInsets()
             setupToolbar()
+            setupWeatherWidget()
             setupRecyclerView()
             setupInputBar()
             observeState()
             viewModel.loadStarters()
         } catch (e: Exception) {
             Log.e(TAG, "onViewCreated failed", e)
+        }
+    }
+
+    private fun setupWeatherWidget() {
+        try {
+            val config = FarmerChat.getConfig()
+            val temp = config.weatherTemp
+            if (temp.isNullOrEmpty()) {
+                binding.weatherWidget.visibility = android.view.View.GONE
+                return
+            }
+            binding.weatherWidget.visibility = android.view.View.VISIBLE
+            binding.tvWeatherTemp.text = temp
+
+            val loc = config.weatherLocation
+            if (!loc.isNullOrEmpty()) {
+                binding.tvWeatherLocation.text = "📍  $loc"
+                binding.tvWeatherLocation.visibility = android.view.View.VISIBLE
+            }
+
+            val crop = config.cropName
+            if (!crop.isNullOrEmpty()) {
+                binding.tvCropName.text = "🌾  $crop"
+                binding.tvCropName.visibility = android.view.View.VISIBLE
+            }
+
+            binding.weatherWidget.setOnClickListener {
+                try {
+                    viewModel.sendWeatherQuery("Tell me about farming advice for this weather")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Weather widget click failed", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "setupWeatherWidget failed", e)
         }
     }
 
@@ -401,8 +440,13 @@ internal class ChatFragment : Fragment() {
         try {
             val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: ""
             val img = selectedImageBase64 ?: return
-            viewModel.sendQueryWithImage(text, img)
+            // Extract GPS from EXIF — no location permission needed
+            val gps = selectedImageUri?.let {
+                org.digitalgreen.farmerchat.views.media.ImageUtils.getLocationFromExif(requireContext(), it)
+            }
+            viewModel.sendQueryWithImage(text, img, gps?.first, gps?.second)
             selectedImageBase64 = null
+            selectedImageUri = null
             binding.inputBar.editMessage?.text?.clear()
             updateInputBarButtons(hasText = false)
         } catch (e: Exception) {

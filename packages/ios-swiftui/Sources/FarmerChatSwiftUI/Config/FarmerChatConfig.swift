@@ -87,6 +87,15 @@ public struct FarmerChatConfig {
     public var maxImageDimension: Int
     public var imageCompressionQuality: Int
 
+    // MARK: - Weather Widget
+
+    /// Primary weather text (e.g. "28°C ☀️"). When nil the widget is hidden.
+    public var weatherTemp: String?
+    /// Location label below the temperature (e.g. "Coorg, Karnataka").
+    public var weatherLocation: String?
+    /// Crop chip text on the weather card (e.g. "Rice").
+    public var cropName: String?
+
     /// Global event callback for SDK lifecycle events.
     public var onEvent: ((FarmerChatEvent) -> Void)?
 
@@ -107,6 +116,9 @@ public struct FarmerChatConfig {
         requestTimeoutMs: Int = 15_000,
         maxImageDimension: Int = 300,
         imageCompressionQuality: Int = 80,
+        weatherTemp: String? = nil,
+        weatherLocation: String? = nil,
+        cropName: String? = nil,
         onEvent: ((FarmerChatEvent) -> Void)? = nil
     ) {
         self.baseUrl = baseUrl
@@ -125,6 +137,9 @@ public struct FarmerChatConfig {
         self.requestTimeoutMs = requestTimeoutMs
         self.maxImageDimension = maxImageDimension
         self.imageCompressionQuality = imageCompressionQuality
+        self.weatherTemp = weatherTemp
+        self.weatherLocation = weatherLocation
+        self.cropName = cropName
         self.onEvent = onEvent
     }
 }

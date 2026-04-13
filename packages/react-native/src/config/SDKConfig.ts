@@ -20,6 +20,14 @@ export interface SDKConfiguration {
     secondaryColor?: string;
     cornerRadius?: number;
   };
+
+  // ── Weather Widget ────────────────────────────────────────────────────
+  /** Primary weather text (e.g. "28°C ☀️"). When undefined the widget is hidden. */
+  weatherTemp?: string;
+  /** Location label below the temperature (e.g. "Coorg, Karnataka"). */
+  weatherLocation?: string;
+  /** Crop chip text on the weather card (e.g. "Rice"). */
+  cropName?: string;
 }
 
 /** Validates the SDK API key format. Warns (does not throw) for non-production keys. */

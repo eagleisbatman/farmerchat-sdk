@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.lifecycle.runtime)
     implementation(libs.coroutines.android)
     implementation(libs.appcompat)
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     testImplementation(libs.junit5)
 }

@@ -15,6 +15,7 @@ import org.digitalgreen.farmerchat.views.FarmerChat
 import org.digitalgreen.farmerchat.views.FarmerChatEvent
 import org.digitalgreen.farmerchat.views.network.ConversationHistoryItem
 import org.digitalgreen.farmerchat.views.network.ConversationListItem
+import org.digitalgreen.farmerchat.views.network.CountryDetector
 import org.digitalgreen.farmerchat.views.network.FollowUpQuestionOption
 import org.digitalgreen.farmerchat.views.network.SdkPreferences
 import org.digitalgreen.farmerchat.views.network.StarterQuestionResponse
@@ -129,7 +130,13 @@ internal class ChatViewModel : ViewModel() {
 
     // ── Public actions ───────────────────────────────────────────────
 
-    fun sendQuery(text: String, inputMethod: String = "text", imageData: String? = null) {
+    /** Send a weather-context query (tapping the weather widget). Sets weather_cta_triggered = true. */
+    fun sendWeatherQuery(question: String) {
+        sendQuery(text = question, inputMethod = "text", weatherCtaTriggered = true)
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    fun sendQuery(text: String, inputMethod: String = "text", imageData: String? = null, weatherCtaTriggered: Boolean = false) {
         try {
             val client = apiClient ?: run {
                 _chatState.value = ChatUiState.Error(
@@ -182,6 +189,7 @@ internal class ChatViewModel : ViewModel() {
                         conversationId = convId,
                         messageId = clientMessageId,
                         triggeredInputType = inputMethod,
+                        weatherCtaTriggered = weatherCtaTriggered,
                     )
 
                     val answerText = response.response ?: response.message ?: ""
@@ -381,8 +389,16 @@ internal class ChatViewModel : ViewModel() {
                     return@launch
                 }
                 ensureGuestTokensSuspend()
+                // Priority: FarmerChatConfig.countryCode → IP geo (TokenStore) → SIM/locale (CountryDetector)
+                val configCountry = FarmerChat.getConfig().countryCode
+                val detectedCountry = try { CountryDetector.detect(FarmerChat.getContext()) } catch (_: Exception) { "IN" }
+                val effectiveCountry = when {
+                    configCountry.isNotEmpty() -> configCountry
+                    TokenStore.countryCode.isNotEmpty() -> TokenStore.countryCode
+                    else -> detectedCountry
+                }
                 val groups = client.getSupportedLanguages(
-                    countryCode = TokenStore.countryCode,
+                    countryCode = effectiveCountry,
                     state = TokenStore.state,
                 )
                 _availableLanguageGroups.value = groups
@@ -506,8 +522,13 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /** Send text + base64 image using image_analysis/ endpoint. */
-    fun sendQueryWithImage(text: String, base64Image: String) {
+    /** Send text + base64 image using image_analysis/ endpoint. GPS from EXIF if available. */
+    fun sendQueryWithImage(
+        text: String,
+        base64Image: String,
+        latitude: String? = null,
+        longitude: String? = null,
+    ) {
         val client = apiClient ?: run {
             Log.e(TAG, "sendQueryWithImage: SDK not initialized")
             return
@@ -535,6 +556,8 @@ internal class ChatViewModel : ViewModel() {
                     base64Image = base64Image,
                     imageName = "image_${java.util.UUID.randomUUID()}.jpg",
                     query = text.ifBlank { null },
+                    latitude = latitude,
+                    longitude = longitude,
                 )
                 val inlineFollowUps = resp.followUpQuestions?.map { fq ->
                     FollowUpQuestionOption(
@@ -568,6 +591,7 @@ internal class ChatViewModel : ViewModel() {
         text: String, convId: String,
         triggeredInputType: String = "text",
         transcriptionId: String? = null,
+        weatherCtaTriggered: Boolean = false,
     ) {
         try {
             val msgId = java.util.UUID.randomUUID().toString()
@@ -575,6 +599,7 @@ internal class ChatViewModel : ViewModel() {
                 query = text, conversationId = convId, messageId = msgId,
                 triggeredInputType = triggeredInputType,
                 transcriptionId = transcriptionId,
+                weatherCtaTriggered = weatherCtaTriggered,
             )
             val inlineFollowUps = resp.followUpQuestions?.map { fq ->
                 FollowUpQuestionOption(

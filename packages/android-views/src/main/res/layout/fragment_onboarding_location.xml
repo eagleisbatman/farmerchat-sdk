@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Onboarding Step 1: Region auto-detected via IP geolocation.
+  Per WEATHER_GPS_FLOW spec — NO GPS permission requested.
+-->
 <androidx.constraintlayout.widget.ConstraintLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -33,10 +37,29 @@
         app:layout_constraintTop_toBottomOf="@id/icon_location"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/text_description" />
+        app:layout_constraintBottom_toTopOf="@id/tv_region_label" />
+
+    <!-- IP-detected region label (e.g. "Karnataka, India") -->
+    <TextView
+        android:id="@+id/tv_region_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Detecting region…"
+        android:textSize="16sp"
+        android:textColor="@color/fc_primary"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:background="@drawable/fc_region_chip_bg"
+        android:layout_marginTop="@dimen/fc_padding_medium"
+        app:layout_constraintTop_toBottomOf="@id/text_title"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintBottom_toTopOf="@id/tv_region_detail" />
 
     <TextView
-        android:id="@+id/text_description"
+        android:id="@+id/tv_region_detail"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="@string/fc_onboarding_location_description"
@@ -44,7 +67,7 @@
         android:textColor="@color/fc_text_secondary"
         android:gravity="center"
         android:layout_marginTop="@dimen/fc_padding_medium"
-        app:layout_constraintTop_toBottomOf="@id/text_title"
+        app:layout_constraintTop_toBottomOf="@id/tv_region_label"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toTopOf="@id/btn_share_location" />
@@ -53,25 +76,12 @@
         android:id="@+id/btn_share_location"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="@string/fc_share_location"
+        android:text="@string/fc_onboarding_location_continue"
         android:layout_marginTop="@dimen/fc_padding_extra_large"
         android:layout_marginHorizontal="@dimen/fc_padding_large"
         app:backgroundTint="@color/fc_primary"
         app:cornerRadius="@dimen/fc_corner_radius"
-        app:layout_constraintTop_toBottomOf="@id/text_description"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintBottom_toTopOf="@id/btn_skip_location" />
-
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btn_skip_location"
-        style="@style/Widget.Material3.Button.TextButton"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/fc_skip"
-        android:textColor="@color/fc_text_secondary"
-        android:layout_marginTop="@dimen/fc_padding_medium"
-        app:layout_constraintTop_toBottomOf="@id/btn_share_location"
+        app:layout_constraintTop_toBottomOf="@id/tv_region_detail"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintBottom_toBottomOf="parent" />

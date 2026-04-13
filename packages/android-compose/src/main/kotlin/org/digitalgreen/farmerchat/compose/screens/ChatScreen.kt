@@ -14,6 +14,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.Brush
@@ -109,6 +110,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
     var showVoiceSheet by remember { mutableStateOf(false) }
     var showImageSheet by remember { mutableStateOf(false) }
     var selectedImageBase64 by remember { mutableStateOf<String?>(null) }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
 
     // Temp URI for camera photo
     var cameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
@@ -127,6 +129,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         uri?.let {
+            selectedImageUri = it
             CoroutineScope(Dispatchers.IO).launch {
                 val b64 = uriToBase64Jpeg(context, it.toString())
                 if (b64 != null) selectedImageBase64 = b64
@@ -140,6 +143,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
     ) { success ->
         if (success) {
             cameraPhotoUri?.let { uri ->
+                selectedImageUri = uri
                 CoroutineScope(Dispatchers.IO).launch {
                     val b64 = uriToBase64Jpeg(context, uri.toString())
                     if (b64 != null) selectedImageBase64 = b64
@@ -208,6 +212,22 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
 
             if (!isConnected) ConnectivityBanner()
 
+            // Weather widget — shown only when host app provides weatherTemp in config
+            val cfg = FarmerChat.getConfig()
+            if (!cfg.weatherTemp.isNullOrEmpty()) {
+                WeatherWidget(
+                    weatherTemp     = cfg.weatherTemp!!,
+                    weatherLocation = cfg.weatherLocation,
+                    cropName        = cfg.cropName,
+                    onTap           = {
+                        try {
+                            val q = "Tell me about farming advice for this weather"
+                            viewModel.sendWeatherQuery(q)
+                        } catch (_: Exception) {}
+                    },
+                )
+            }
+
             Box(modifier = Modifier.weight(1f)) {
                 if (messages.isEmpty() && selectedImageBase64 == null) {
                     EmptyState()
@@ -257,8 +277,13 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
                 },
                 onSendWithImage      = { text, b64 ->
                     try {
-                        viewModel.sendQueryWithImage(text, b64)
+                        // Extract GPS coordinates from EXIF (no location permission needed)
+                        val gps = selectedImageUri?.let {
+                            org.digitalgreen.farmerchat.compose.media.ImageUtils.getLocationFromExif(context, it)
+                        }
+                        viewModel.sendQueryWithImage(text, b64, gps?.first, gps?.second)
                         selectedImageBase64 = null
+                        selectedImageUri = null
                     } catch (_: Exception) {}
                 },
                 selectedImageBase64  = selectedImageBase64,
@@ -507,6 +532,63 @@ private fun ErrorBanner(message: String, retryable: Boolean, onRetry: () -> Unit
                 Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp), tint = SdkError)
                 Spacer(Modifier.width(4.dp))
                 Text("Retry", color = SdkError)
+            }
+        }
+    }
+}
+
+// ── Weather Widget ─────────────────────────────────────────────────────────────
+
+/**
+ * Weather card shown at the top of the chat when the host app provides weather data
+ * via [FarmerChatConfig.weatherTemp]. Tapping sends a query with weather_cta_triggered = true.
+ */
+@Composable
+private fun WeatherWidget(
+    weatherTemp: String,
+    weatherLocation: String?,
+    cropName: String?,
+    onTap: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(Color(0xFF172213))
+            .clickable(onClick = onTap)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text       = weatherTemp,
+                color      = Color.White,
+                fontWeight = FontWeight.Bold,
+                fontSize   = 14.sp,
+            )
+            if (!weatherLocation.isNullOrEmpty()) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    text     = "📍  $weatherLocation",
+                    color    = Color(0xFF8FA88C),
+                    fontSize = 12.sp,
+                )
+            }
+        }
+        if (!cropName.isNullOrEmpty()) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Color(0xFF4CAF50).copy(alpha = 0.22f))
+                    .padding(horizontal = 10.dp, vertical = 5.dp),
+            ) {
+                Text(
+                    text       = "🌾  $cropName",
+                    color      = Color(0xFF4CAF50),
+                    fontSize   = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                )
             }
         }
     }

@@ -49,7 +49,8 @@ export interface UseChatReturn {
   errorMessage: string | null;
 
   // Actions
-  sendQuery: (text: string, inputMethod?: TriggeredInputType, imageData?: string) => Promise<void>;
+  sendQuery: (text: string, inputMethod?: TriggeredInputType, imageData?: string, weatherCtaTriggered?: boolean) => Promise<void>;
+  sendWeatherQuery: (question: string) => Promise<void>;
   sendFollowUp: (text: string, followUpQuestionId?: string) => Promise<void>;
   retryLastQuery: () => Promise<void>;
   startNewConversation: () => void;
@@ -177,6 +178,7 @@ export function useChat(): UseChatReturn {
     text: string,
     inputMethod: TriggeredInputType = 'text',
     imageData?: string,
+    weatherCtaTriggered: boolean = false,
   ) => {
     const client = apiClientRef.current;
     if (!client) {
@@ -236,7 +238,7 @@ export function useChat(): UseChatReturn {
           conversation_id: conversationId,
           message_id: clientMessageId,
           triggered_input_type: inputMethod,
-          weather_cta_triggered: false,
+          weather_cta_triggered: weatherCtaTriggered,
           use_entity_extraction: true,
           retry: false,
         });
@@ -277,6 +279,10 @@ export function useChat(): UseChatReturn {
       void client.trackFollowUpClick({ follow_up_question: text }).catch(() => {});
     }
     await sendQuery(text, 'follow_up');
+  }, [sendQuery]);
+
+  const sendWeatherQuery = useCallback(async (question: string) => {
+    await sendQuery(question, 'text', undefined, true);
   }, [sendQuery]);
 
   // ---------------------------------------------------------------------------
@@ -467,6 +473,7 @@ export function useChat(): UseChatReturn {
     availableLanguageGroups,
     errorMessage,
     sendQuery,
+    sendWeatherQuery,
     sendFollowUp,
     retryLastQuery,
     startNewConversation,

@@ -56,7 +56,10 @@ struct GuestAPIClient {
         await TokenStore.shared.saveTokens(
             accessToken: parsed.accessToken,
             refreshToken: parsed.refreshToken,
-            userId: parsed.userId ?? ""
+            userId: parsed.userId ?? "",
+            countryCode: parsed.countryCode,
+            country: parsed.country,
+            state: parsed.state
         )
 
         Self.logger.debug("Guest user initialized. userId=\(parsed.userId ?? "nil")")
