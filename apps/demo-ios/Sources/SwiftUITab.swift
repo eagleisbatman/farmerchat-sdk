@@ -6,7 +6,6 @@ import FarmerChatSwiftUI
 /// Displays app info with the FarmerChatFAB overlaid in the bottom-trailing corner.
 /// Tapping the FAB presents the SwiftUI chat view as a full-screen cover.
 struct SwiftUITab: View {
-    @State private var showChat = false
 
     private let farmerChatGreen = Color.farmerChatGreen
 
@@ -42,20 +41,8 @@ struct SwiftUITab: View {
             }
             .frame(maxWidth: .infinity)
 
-            // FAB overlay
-            FarmerChatSwiftUI.FarmerChatFAB {
-                showChat = true
-            }
-            .padding(24)
+            // FAB — manages its own sheet presentation internally.
+            FarmerChatSwiftUI.FarmerChatFAB()
         }
-        #if os(iOS)
-        .fullScreenCover(isPresented: $showChat) {
-            FarmerChatSwiftUI.FarmerChat.shared.chatView()
-        }
-        #else
-        .sheet(isPresented: $showChat) {
-            FarmerChatSwiftUI.FarmerChat.shared.chatView()
-        }
-        #endif
     }
 }
