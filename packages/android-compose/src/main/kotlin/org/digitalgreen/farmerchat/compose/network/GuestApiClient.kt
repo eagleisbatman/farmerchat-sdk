@@ -78,12 +78,15 @@ internal class GuestApiClient(private val baseUrl: String) {
                 )
 
                 TokenStore.saveTokens(
-                    accessToken = response.accessToken,
+                    accessToken  = response.accessToken,
                     refreshToken = response.refreshToken,
-                    userId = response.userId,
+                    userId       = response.userId,
+                    countryCode  = response.countryCode,
+                    country      = response.country,
+                    state        = response.state,
                 )
 
-                Log.d(TAG, "Guest user initialized. userId=${response.userId}")
+                Log.d(TAG, "Guest user initialized. userId=${response.userId} countryCode=${response.countryCode}")
                 response
             } finally {
                 connection?.disconnect()

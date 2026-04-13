@@ -347,9 +347,18 @@ internal class ChatViewModel : ViewModel() {
 
     // ── Language (Android-only) ───────────────────────────────────────────────
 
-    /** Fetch supported languages grouped by country. */
+    /**
+     * Fetch supported languages grouped by country.
+     *
+     * country_code and state are read from [TokenStore] (populated by initialize_user).
+     * Callers can override by passing explicit values; empty string means "use TokenStore value".
+     */
     fun loadLanguages(countryCode: String = "", state: String = "") {
-        Log.d(TAG, "loadLanguages called — apiClient=${if (apiClient != null) "ready" else "NULL"}")
+        // Resolve effective params: prefer explicit args, fall back to TokenStore geo-data
+        val effectiveCountry = countryCode.ifEmpty { TokenStore.countryCode }
+        val effectiveState   = state.ifEmpty { TokenStore.state }
+        Log.d(TAG, "loadLanguages called — countryCode='$effectiveCountry' state='$effectiveState'" +
+                " apiClient=${if (apiClient != null) "ready" else "NULL"}")
         viewModelScope.launch {
             try {
                 val client = apiClient ?: run {
@@ -358,8 +367,8 @@ internal class ChatViewModel : ViewModel() {
                 }
                 Log.d(TAG, "loadLanguages: ensuring guest tokens…")
                 ensureGuestTokensSuspend()
-                Log.d(TAG, "loadLanguages: calling GET api/language/v2/country_wise_supported_languages/")
-                val groups = client.getSupportedLanguages(countryCode, state)
+                Log.d(TAG, "loadLanguages: GET country_wise_supported_languages country=$effectiveCountry state=$effectiveState")
+                val groups = client.getSupportedLanguages(effectiveCountry, effectiveState)
                 Log.d(TAG, "loadLanguages: received ${groups.sumOf { it.languages.size }} languages in ${groups.size} groups")
                 _availableLanguageGroups.value = groups
             } catch (e: Exception) {
