@@ -356,7 +356,10 @@ internal class ChatViewModel : ViewModel() {
 
         val ordered = sections.reversed().flatten()
 
+        // Guard against duplicate messageIds returned by the server (RecyclerView requires unique IDs)
         val result = mutableListOf<ChatMessage>()
+        val seenIds = mutableSetOf<String>()
+        var itemIndex = 0
         for (item in ordered) {
             when (item.messageTypeId) {
                 7 -> {
@@ -373,8 +376,13 @@ internal class ChatViewModel : ViewModel() {
                         result[lastAiIdx] = result[lastAiIdx].copy(followUps = mapped)
                     }
                 }
-                else -> historyItemToChatMessage(item)?.let { result.add(it) }
+                else -> {
+                    val msg = historyItemToChatMessage(item) ?: continue
+                    val uniqueId = if (seenIds.add(msg.id)) msg.id else "${msg.id}_$itemIndex"
+                    result.add(if (uniqueId != msg.id) msg.copy(id = uniqueId) else msg)
+                }
             }
+            itemIndex++
         }
         return result
     }
