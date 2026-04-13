@@ -1,20 +1,25 @@
 import SwiftUI
 
-// MARK: - Color / corner helpers
+// MARK: - Dark palette (matches Compose / Views dark theme)
 
-private let sdkPrimary = Color(red: 0.18, green: 0.49, blue: 0.20) // #2E7D32
+private let darkBg       = Color(red: 0.059, green: 0.102, blue: 0.051)  // #0F1A0D
+private let darkSurface  = Color(red: 0.102, green: 0.137, blue: 0.094)  // #1A2318
+private let darkSurface2 = Color(red: 0.141, green: 0.188, blue: 0.125)  // #243020
+private let textPrimary  = Color(red: 0.910, green: 0.961, blue: 0.914)  // #E8F5E9
+private let textSecondary = Color(red: 0.561, green: 0.659, blue: 0.549) // #8FA88C
+private let onlineDot    = Color(red: 0.412, green: 0.941, blue: 0.682)  // #69F0AE
+private let lightGreen   = Color(red: 0.298, green: 0.686, blue: 0.314)  // #4CAF50
 
 private var primaryColor: Color {
-    colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32")
+    colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#4CAF50")
 }
-
 private var cardCornerRadius: Double {
     FarmerChat.getConfig().theme?.cornerRadius ?? 12
 }
 
 // MARK: - ChatView
 
-/// Main chat screen — light system theme.
+/// Main chat screen — dark forest-green theme matching Compose and Views SDKs.
 ///
 /// Layout: ChatTopBar → ConnectivityBanner → Messages / EmptyState → InputBar.
 struct ChatView: View {
@@ -28,40 +33,46 @@ struct ChatView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ChatTopBar(viewModel: viewModel)
+        ZStack {
+            LinearGradient(
+                colors: [Color(red: 0.082, green: 0.125, blue: 0.078), darkBg],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
 
-            if !viewModel.isConnected {
-                ConnectivityBanner()
-            }
+            VStack(spacing: 0) {
+                ChatTopBar(viewModel: viewModel)
 
-            ZStack {
-                Color(.systemBackground).ignoresSafeArea(edges: .bottom)
-
-                if viewModel.messages.isEmpty {
-                    EmptyStateArea()
-                } else {
-                    MessageList(viewModel: viewModel)
+                if !viewModel.isConnected {
+                    ConnectivityBanner()
                 }
-            }
 
-            // Error banner
-            if case let .error(_, message, retryable) = viewModel.chatState {
-                InlineErrorBanner(
-                    message: message,
-                    retryable: retryable,
-                    onRetry: { viewModel.retryLastQuery() }
+                ZStack {
+                    if viewModel.messages.isEmpty {
+                        EmptyStateArea()
+                    } else {
+                        MessageList(viewModel: viewModel)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if case let .error(_, message, retryable) = viewModel.chatState {
+                    InlineErrorBanner(
+                        message: message,
+                        retryable: retryable,
+                        onRetry: { viewModel.retryLastQuery() }
+                    )
+                }
+
+                InputBar(
+                    enabled:      !isInputDisabled && viewModel.isConnected,
+                    onSend:       { text in viewModel.sendQuery(text: text) },
+                    voiceEnabled: config.voiceInputEnabled,
+                    cameraEnabled: config.imageInputEnabled
                 )
             }
-
-            InputBar(
-                enabled:      !isInputDisabled && viewModel.isConnected,
-                onSend:       { text in viewModel.sendQuery(text: text) },
-                voiceEnabled: config.voiceInputEnabled,
-                cameraEnabled: config.imageInputEnabled
-            )
         }
-        .background(Color(.systemBackground))
     }
 }
 
@@ -72,29 +83,50 @@ private struct ChatTopBar: View {
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
 
     var body: some View {
-        HStack(spacing: 10) {
-            // Logo circle 32pt with leaf icon
+        HStack(spacing: 0) {
+            // Avatar — 40pt green circle with leaf icon
             ZStack {
                 Circle()
-                    .fill(primaryColor)
-                    .frame(width: 32, height: 32)
+                    .fill(lightGreen)
+                    .frame(width: 40, height: 40)
                 Image(systemName: "leaf.circle.fill")
-                    .font(.system(size: 18))
+                    .font(.system(size: 20))
                     .foregroundColor(.white)
             }
 
-            // Title column
+            Spacer().frame(width: 10)
+
+            // Title + online dot + subtitle
             VStack(alignment: .leading, spacing: 2) {
-                Text(config.headerTitle)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                Text("AI Farm Assistant")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Text(config.headerTitle.isEmpty ? "FarmerChat AI" : config.headerTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    // Online dot
+                    Circle()
+                        .fill(onlineDot)
+                        .frame(width: 7, height: 7)
+                }
+                Text("Smart Farming Assistant")
+                    .font(.system(size: 11))
+                    .foregroundColor(textSecondary)
             }
 
             Spacer()
+
+            // Translate / language icon
+            if config.historyEnabled {
+                Button {
+                    viewModel.navigateTo(.profile)
+                } label: {
+                    Image(systemName: "globe")
+                        .font(.system(size: 19))
+                        .foregroundColor(textSecondary)
+                        .frame(width: 40, height: 40)
+                }
+                .accessibilityLabel("Language")
+            }
 
             // History icon
             if config.historyEnabled {
@@ -102,18 +134,16 @@ private struct ChatTopBar: View {
                     viewModel.navigateTo(.history)
                 } label: {
                     Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 20))
-                        .foregroundColor(primaryColor)
+                        .font(.system(size: 19))
+                        .foregroundColor(textSecondary)
+                        .frame(width: 40, height: 40)
                 }
                 .accessibilityLabel("Chat history")
             }
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(Color(.systemBackground))
-        .overlay(
-            Divider(), alignment: .bottom
-        )
+        .background(darkSurface)
     }
 }
 
@@ -123,12 +153,11 @@ private struct EmptyStateArea: View {
     var body: some View {
         VStack(spacing: 16) {
             Spacer()
-            Image(systemName: "leaf.fill")
-                .font(.system(size: 48))
-                .foregroundColor(primaryColor.opacity(0.5))
+            Text("🌾")
+                .font(.system(size: 56))
             Text("Ask a question about farming to get started")
-                .font(.body)
-                .foregroundColor(.secondary)
+                .font(.system(size: 16))
+                .foregroundColor(textSecondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Spacer()
@@ -160,7 +189,6 @@ private struct MessageList: View {
                         }
                     }
 
-                    // Typing indicator when sending
                     if case .sending = viewModel.chatState {
                         LoadingBubble()
                     }
@@ -196,17 +224,16 @@ private struct UserBubble: View {
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
                     .background(
-                        // #2E7D32 — user bubble, bottom-right 4pt
                         RoundedCornerShape2(
                             topLeft: 18, topRight: 18,
                             bottomLeft: 18, bottomRight: 4
                         )
-                        .fill(Color(red: 0.18, green: 0.49, blue: 0.20))
+                        .fill(lightGreen)
                     )
-                    .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 1)
+                    .shadow(color: Color.black.opacity(0.18), radius: 3, x: 0, y: 1)
                 Text(message.timestamp, style: .time)
                     .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .foregroundColor(textSecondary)
             }
         }
         .padding(.horizontal, 12)
@@ -225,8 +252,10 @@ struct LoadingBubble: View {
         HStack(alignment: .top, spacing: 8) {
             // Avatar
             ZStack {
-                Circle().fill(Color(red: 0.18, green: 0.49, blue: 0.20)).frame(width: 32, height: 32)
-                Image(systemName: "leaf.circle.fill").font(.system(size: 18)).foregroundColor(.white)
+                Circle().fill(lightGreen).frame(width: 36, height: 36)
+                Image(systemName: "leaf.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(.white)
             }
 
             // Dots bubble
@@ -237,7 +266,7 @@ struct LoadingBubble: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            .background(Color(.systemGray6))
+            .background(darkSurface)
             .clipShape(
                 RoundedCornerShape2(topLeft: 4, topRight: 18, bottomLeft: 18, bottomRight: 18)
             )
@@ -255,7 +284,7 @@ struct LoadingBubble: View {
 
     private func dotView(scale: Binding<CGFloat>) -> some View {
         Circle()
-            .fill(Color(.systemGray3))
+            .fill(lightGreen)
             .frame(width: 8, height: 8)
             .scaleEffect(scale.wrappedValue)
     }
@@ -281,10 +310,10 @@ private struct InlineErrorBanner: View {
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundColor(.orange)
+                .foregroundColor(Color(red: 0.81, green: 0.40, blue: 0.47))
             Text(message)
                 .font(.subheadline)
-                .foregroundColor(.primary)
+                .foregroundColor(textPrimary)
                 .lineLimit(2)
             Spacer()
             if retryable {
@@ -293,15 +322,15 @@ private struct InlineErrorBanner: View {
                     .foregroundColor(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
-                    .background(primaryColor)
+                    .background(lightGreen)
                     .clipShape(RoundedRectangle(cornerRadius: 8))
             }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.08))
+        .background(Color(red: 0.24, green: 0.11, blue: 0.13))
         .overlay(
             RoundedRectangle(cornerRadius: cardCornerRadius)
-                .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                .stroke(Color(red: 0.81, green: 0.40, blue: 0.47).opacity(0.4), lineWidth: 1)
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
