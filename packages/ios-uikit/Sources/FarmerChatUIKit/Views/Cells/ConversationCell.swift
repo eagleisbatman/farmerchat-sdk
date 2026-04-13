@@ -106,36 +106,28 @@ internal final class ConversationCell: UITableViewCell {
         ])
     }
 
-    // MARK: - Configure
+    // MARK: - Configure (new API — ConversationListItem)
 
-    func configure(with conversation: ConversationResponse) {
-        // Title
-        if !conversation.title.isEmpty {
-            titleLabel.text = conversation.title
-        } else if let first = conversation.messages.first {
-            titleLabel.text = String(first.text.prefix(60))
-        } else {
-            titleLabel.text = "Conversation"
-        }
+    func configureWithListItem(_ item: ConversationListItem) {
+        cardView.backgroundColor = UIColor(red: 0.14, green: 0.14, blue: 0.18, alpha: 1)
+        cardView.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
+        titleLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        previewLabel.textColor = UIColor.white.withAlphaComponent(0.5)
+        dateLabel.textColor = UIColor.white.withAlphaComponent(0.35)
+        chevronView.tintColor = UIColor.white.withAlphaComponent(0.35)
 
-        // Preview
-        if let last = conversation.messages.last {
-            let preview = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            previewLabel.text = preview.isEmpty ? nil : String(preview.prefix(120))
-            previewLabel.isHidden = preview.isEmpty
+        titleLabel.text = item.conversationTitle ?? "Conversation"
+
+        if let grouping = item.grouping, !grouping.isEmpty {
+            previewLabel.text = grouping
+            previewLabel.isHidden = false
         } else {
             previewLabel.isHidden = true
         }
 
-        // Date
-        let timestamp = conversation.updatedAt > 0 ? conversation.updatedAt : conversation.createdAt
-        if timestamp > 0 {
-            let date = Date(timeIntervalSince1970: TimeInterval(timestamp) / 1000)
-            dateLabel.text = Self.relativeDateFormatter.localizedString(for: date, relativeTo: Date())
-        } else {
-            dateLabel.text = nil
-        }
+        dateLabel.text = item.createdOn?.prefix(10).description ?? ""
     }
+
 }
 
 // MARK: - UIFont+Traits Helper

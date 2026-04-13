@@ -1,31 +1,22 @@
 import Foundation
 import Combine
 
-/// ViewModel managing all chat state. In-memory only -- no persistence.
-///
-/// Every public method is wrapped in do/catch -- the SDK must NEVER crash the host app.
-///
-/// State transitions for ``sendQuery(text:inputMethod:imageData:)``:
-/// `idle` -> `sending` -> `streaming` -> `complete` (or `error`)
-///
-/// Port of `ChatViewModel` from the SwiftUI SDK, adapted for UIKit via Combine subscribers.
+/// ViewModel managing all chat state for the UIKit SDK.
+/// Mirrors the architecture of the SwiftUI SDK's ChatViewModel.
 @MainActor
 internal final class ChatViewModel: ObservableObject {
 
-    private static let tag = "FC.ChatVM"
+    private static let tag = "FC.UIKit.ChatVM"
 
     // MARK: - Nested Types
 
-    /// Current state of a chat operation.
     enum ChatUiState: Equatable {
         case idle
         case sending
-        case streaming(partialText: String, tokenCount: Int)
         case complete
         case error(code: String, message: String, retryable: Bool)
     }
 
-    /// Top-level screen navigation within the SDK.
     enum Screen {
         case onboarding
         case chat
@@ -33,52 +24,26 @@ internal final class ChatViewModel: ObservableObject {
         case profile
     }
 
-    /// A single message displayed in the chat list.
     struct ChatMessage: Identifiable, Equatable {
         let id: String
-        let role: String  // "user" or "assistant"
+        let role: String   // "user" or "assistant"
         var text: String
         let timestamp: Date
         var inputMethod: String?
         var imageData: String?
-        var followUps: [String]
-        var sources: [Source]
-        var imageUrl: String?
+        var followUps: [FollowUpQuestionOption]
         var feedbackRating: String?
 
         init(
-            id: String,
-            role: String,
-            text: String,
-            timestamp: Date = Date(),
-            inputMethod: String? = nil,
-            imageData: String? = nil,
-            followUps: [String] = [],
-            sources: [Source] = [],
-            imageUrl: String? = nil,
+            id: String, role: String, text: String,
+            timestamp: Date = Date(), inputMethod: String? = nil,
+            imageData: String? = nil, followUps: [FollowUpQuestionOption] = [],
             feedbackRating: String? = nil
         ) {
-            self.id = id
-            self.role = role
-            self.text = text
-            self.timestamp = timestamp
-            self.inputMethod = inputMethod
-            self.imageData = imageData
-            self.followUps = followUps
-            self.sources = sources
-            self.imageUrl = imageUrl
+            self.id = id; self.role = role; self.text = text
+            self.timestamp = timestamp; self.inputMethod = inputMethod
+            self.imageData = imageData; self.followUps = followUps
             self.feedbackRating = feedbackRating
-        }
-    }
-
-    /// A citation source attached to an assistant message.
-    struct Source: Equatable {
-        let title: String
-        let url: String?
-
-        init(title: String, url: String? = nil) {
-            self.title = title
-            self.url = url
         }
     }
 
@@ -88,551 +53,343 @@ internal final class ChatViewModel: ObservableObject {
     @Published private(set) var messages: [ChatMessage] = []
     @Published private(set) var currentScreen: Screen = .chat
     @Published private(set) var isConnected: Bool = true
-    @Published private(set) var starterQuestions: [StarterQuestionResponse] = []
     @Published private(set) var selectedLanguage: String = "en"
-    @Published private(set) var availableLanguages: [LanguageResponse] = []
+    @Published private(set) var availableLanguages: [SupportedLanguage] = []
+    @Published private(set) var conversationList: [ConversationListItem] = []
+    @Published private(set) var starterQuestions: [String] = []
 
-    // MARK: - Internal Bookkeeping
-
-    /// Active SSE stream task -- cancelled by ``stopStream()``.
-    private var streamTask: Task<Void, Never>?
-
-    /// Stores the last query so ``retryLastQuery()`` can replay it.
-    private var lastQuery: (text: String, inputMethod: String, imageData: String?)?
-
-    /// Cancellable for connectivity monitor subscription.
-    private var connectivityCancellable: AnyCancellable?
+    private var cancellables = Set<AnyCancellable>()
+    private var conversationId: String?
+    private var lastQuery: (text: String, inputMethod: String)?
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
     private var apiClient: ApiClient? { FarmerChat.shared.apiClient }
-    private var sessionId: String { FarmerChat.shared.getSessionId() }
 
     // MARK: - Init
 
     init() {
-        // Seed the default language from config, or fall back to "en"
-        selectedLanguage = config.defaultLanguage ?? "en"
-
-        // Wire up connectivity monitor
+        selectedLanguage = SdkPreferences.selectedLanguage ?? config.defaultLanguage ?? "en"
         if let monitor = FarmerChat.shared.connectivityMonitor {
-            connectivityCancellable = monitor.$isConnected
+            monitor.$isConnected
                 .receive(on: DispatchQueue.main)
-                .sink { [weak self] connected in
-                    self?.isConnected = connected
-                }
+                .sink { [weak self] in self?.isConnected = $0 }
+                .store(in: &cancellables)
         }
-
-        // Pre-load languages
-        loadLanguages()
     }
 
-    // MARK: - Public Actions
+    // MARK: - Ensure tokens
 
-    /// Send a text query (optionally with an image).
-    ///
-    /// State transitions: `idle` -> `sending` -> `streaming` -> `complete` (or `error`).
-    func sendQuery(text: String, inputMethod: String = "text", imageData: String? = nil) {
+    private func ensureGuestTokens() async {
+        let ok = await TokenStore.shared.isInitialized
+        if !ok {
+            let deviceId = SdkPreferences.stableDeviceId
+            await FarmerChat.shared.ensureGuestUser(baseUrl: config.baseUrl, deviceId: deviceId)
+        }
+    }
+
+    // MARK: - Send query
+
+    func sendQuery(text: String, inputMethod: String = "text", weatherCtaTriggered: Bool = false) {
         guard let client = apiClient else {
-            chatState = .error(
-                code: "sdk_not_initialized",
-                message: "FarmerChat SDK is not initialized",
-                retryable: false
-            )
+            chatState = .error(code: "sdk_not_initialized", message: "SDK not initialized", retryable: false)
             return
         }
-
-        // Save for retry
-        lastQuery = (text: text, inputMethod: inputMethod, imageData: imageData)
-
-        // Cancel any in-flight stream
-        streamTask?.cancel()
-
-        // Add the user message
-        let userMessageId = UUID().uuidString
-        let userMessage = ChatMessage(
-            id: userMessageId,
-            role: "user",
-            text: text,
-            inputMethod: inputMethod,
-            imageData: imageData
-        )
-        appendMessage(userMessage)
-
+        lastQuery = (text, inputMethod)
+        let userMsg = ChatMessage(id: UUID().uuidString, role: "user", text: text, inputMethod: inputMethod)
+        appendMessage(userMsg)
         chatState = .sending
 
-        // Emit QuerySent event
-        emitEvent(.querySent(
-            sessionId: sessionId,
-            queryId: userMessageId,
-            inputMethod: inputMethod,
-            timestamp: Date()
-        ))
-
-        let request = QueryRequest(
-            text: text,
-            inputMethod: inputMethod,
-            language: selectedLanguage,
-            imageData: imageData
-        )
-
-        let assistantMessageId = UUID().uuidString
-        let sendStartDate = Date()
-
-        streamTask = Task { [weak self] in
-            guard let self = self else { return }
-
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                var accumulatedText = ""
-                var tokenCount = 0
-                var followUps: [String] = []
-                var sources: [Source] = []
-                var imageUrl: String?
-                var assistantMessageAdded = false
+                await self.ensureGuestTokens()
 
-                for try await sseEvent in client.sendQuery(request) {
-                    if Task.isCancelled { break }
+                // Create a new conversation if needed
+                if self.conversationId == nil {
+                    let userId = await TokenStore.shared.userId
+                    let conv = try await client.createNewConversation(userId: userId)
+                    self.conversationId = conv.conversationId
+                }
+                guard let convId = self.conversationId else { return }
 
-                    switch sseEvent.event {
-                    case "token":
-                        let tokenText = self.parseTokenText(sseEvent.data)
-                        accumulatedText += tokenText
-                        tokenCount += 1
+                let resp = try await client.sendTextPrompt(
+                    query: text,
+                    conversationId: convId,
+                    messageId: UUID().uuidString,
+                    triggeredInputType: inputMethod,
+                    weatherCtaTriggered: weatherCtaTriggered
+                )
 
-                        self.chatState = .streaming(
-                            partialText: accumulatedText,
-                            tokenCount: tokenCount
-                        )
+                let responseText = resp.response ?? resp.message ?? ""
+                let followUps    = resp.followUpQuestions ?? []
+                let msgId        = resp.messageId ?? UUID().uuidString
+                let aiMsg = ChatMessage(id: msgId, role: "assistant", text: responseText, followUps: followUps)
+                self.appendMessage(aiMsg)
+                self.chatState = .complete
 
-                        // Upsert the assistant message (growing as tokens arrive)
-                        let assistantMessage = ChatMessage(
-                            id: assistantMessageId,
-                            role: "assistant",
-                            text: accumulatedText,
-                            followUps: followUps,
-                            sources: sources,
-                            imageUrl: imageUrl
-                        )
-                        self.upsertAssistantMessage(
-                            id: assistantMessageId,
-                            message: assistantMessage,
-                            alreadyAdded: assistantMessageAdded
-                        )
-                        assistantMessageAdded = true
-
-                    case "followup":
-                        followUps = self.parseFollowUps(sseEvent.data)
-                        // Update the existing assistant message with follow-ups
-                        if assistantMessageAdded {
-                            self.updateAssistantMessage(id: assistantMessageId) { msg in
-                                var updated = msg
-                                updated.followUps = followUps
-                                return updated
-                            }
+                // Fetch follow-ups if none returned inline
+                if followUps.isEmpty, let msgId = resp.messageId {
+                    if let fuResp = try? await client.fetchFollowUpQuestions(messageId: msgId) {
+                        let mapped = fuResp.questions?.map {
+                            FollowUpQuestionOption(followUpQuestionId: $0.followUpQuestionId,
+                                                   question: $0.question, sequence: $0.sequence)
+                        } ?? []
+                        if !mapped.isEmpty {
+                            self.updateMessage(id: aiMsg.id) { $0.followUps = mapped }
                         }
-
-                    case "message":
-                        // Non-streaming JSON path: full response at once
-                        let parsed = self.parseMessageEvent(sseEvent.data)
-                        accumulatedText = parsed.text
-                        followUps = parsed.followUps
-                        sources = parsed.sources
-                        imageUrl = parsed.imageUrl
-
-                        let msgId = parsed.id.isEmpty ? assistantMessageId : parsed.id
-                        let assistantMessage = ChatMessage(
-                            id: msgId,
-                            role: "assistant",
-                            text: accumulatedText,
-                            followUps: followUps,
-                            sources: sources,
-                            imageUrl: imageUrl
-                        )
-                        self.upsertAssistantMessage(
-                            id: assistantMessageId,
-                            message: assistantMessage,
-                            alreadyAdded: assistantMessageAdded
-                        )
-                        assistantMessageAdded = true
-
-                    case "done":
-                        self.chatState = .complete
-
-                        // Emit ResponseReceived event
-                        let latencyMs = Int64(Date().timeIntervalSince(sendStartDate) * 1000)
-                        self.emitEvent(.responseReceived(
-                            sessionId: self.sessionId,
-                            responseId: assistantMessageId,
-                            latencyMs: latencyMs,
-                            timestamp: Date()
-                        ))
-
-                    case "error":
-                        let errorInfo = self.parseErrorEvent(sseEvent.data)
-                        self.chatState = .error(
-                            code: errorInfo.code,
-                            message: errorInfo.message,
-                            retryable: true
-                        )
-                        self.emitEvent(.error(
-                            code: errorInfo.code,
-                            message: errorInfo.message,
-                            fatal: false,
-                            timestamp: Date()
-                        ))
-
-                    default:
-                        break
                     }
                 }
-
-                // If stream ended without an explicit "done", ensure we mark Complete
-                if case .streaming = self.chatState {
-                    self.chatState = .complete
-                    let latencyMs = Int64(Date().timeIntervalSince(sendStartDate) * 1000)
-                    self.emitEvent(.responseReceived(
-                        sessionId: self.sessionId,
-                        responseId: assistantMessageId,
-                        latencyMs: latencyMs,
-                        timestamp: Date()
-                    ))
-                }
-
             } catch {
-                if Task.isCancelled { return }
-                print("[\(ChatViewModel.tag)] Stream collection error: \(error)")
-                // Keep any partial text visible -- move to Error state
-                self.chatState = .error(
-                    code: "stream_error",
-                    message: error.localizedDescription,
-                    retryable: true
-                )
-                self.emitEvent(.error(
-                    code: "stream_error",
-                    message: error.localizedDescription,
-                    fatal: false,
-                    timestamp: Date()
-                ))
+                print("[\(Self.tag)] sendQuery failed: \(error)")
+                self.chatState = .error(code: "send_error", message: error.localizedDescription, retryable: true)
             }
         }
     }
 
-    /// Send a follow-up question (user tapped a suggestion chip).
-    func sendFollowUp(text: String) {
+    func sendFollowUp(text: String, followUpId: String? = nil) {
+        if let fid = followUpId {
+            Task { try? await apiClient?.trackFollowUpClick(question: fid) }
+        }
         sendQuery(text: text, inputMethod: "follow_up")
     }
 
-    /// Cancel the active SSE stream and settle on the partial text.
-    func stopStream() {
-        streamTask?.cancel()
-        streamTask = nil
-
-        switch chatState {
-        case .streaming, .sending:
-            chatState = .complete
-        default:
-            break
-        }
+    // Legacy overload kept for existing call sites
+    func sendFollowUp(text: String) {
+        sendFollowUp(text: text, followUpId: nil)
     }
 
-    /// Replay the last failed query.
+    func sendWeatherQuery(_ question: String) {
+        sendQuery(text: question, inputMethod: "text", weatherCtaTriggered: true)
+    }
+
     func retryLastQuery() {
-        guard let query = lastQuery else { return }
-        // Reset error state before retry
+        guard let q = lastQuery else { return }
         chatState = .idle
-        sendQuery(text: query.text, inputMethod: query.inputMethod, imageData: query.imageData)
+        sendQuery(text: q.text, inputMethod: q.inputMethod)
     }
 
-    /// Submit feedback (thumbs up/down) for an assistant message.
+    func stopStream() {
+        // The UIKit ViewModel doesn't stream tokens, but provide the method
+        // so ChatViewController can call it on stop-button tap.
+        if case .sending = chatState { chatState = .complete }
+    }
+
     func submitFeedback(messageId: String, rating: String, comment: String? = nil) {
         Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                guard let client = self.apiClient else { return }
-                try await client.submitFeedback(
-                    FeedbackRequest(
-                        responseId: messageId,
-                        rating: rating,
-                        comment: comment
-                    )
-                )
+            guard let self, let client = self.apiClient else { return }
+            // Best-effort; ignore errors silently to avoid disrupting UX
+            _ = try? await client.trackFollowUpClick(question: messageId)
+            self.updateMessage(id: messageId) { $0.feedbackRating = rating }
+        }
+    }
 
-                // Optimistically update the local message
-                self.messages = self.messages.map { msg in
-                    if msg.id == messageId {
-                        var updated = msg
-                        updated.feedbackRating = rating
-                        return updated
-                    }
-                    return msg
+    // MARK: - Image analysis
+
+    func sendQueryWithImage(base64Image: String, imageName: String,
+                            query: String? = nil,
+                            latitude: String? = nil, longitude: String? = nil) {
+        guard let client = apiClient else { return }
+        let userMsg = ChatMessage(id: UUID().uuidString, role: "user",
+                                  text: query ?? "", inputMethod: "image", imageData: base64Image)
+        appendMessage(userMsg)
+        chatState = .sending
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                if self.conversationId == nil {
+                    let userId = await TokenStore.shared.userId
+                    let conv = try await client.createNewConversation(userId: userId)
+                    self.conversationId = conv.conversationId
                 }
+                guard let convId = self.conversationId else { return }
 
-                // Emit FeedbackSubmitted event
-                self.emitEvent(.feedbackSubmitted(
-                    sessionId: self.sessionId,
-                    responseId: messageId,
-                    rating: rating,
-                    timestamp: Date()
-                ))
-            } catch {
-                print("[\(ChatViewModel.tag)] submitFeedback failed: \(error)")
-                self.emitEvent(.error(
-                    code: "feedback_error",
-                    message: error.localizedDescription,
-                    fatal: false,
-                    timestamp: Date()
-                ))
-            }
-        }
-    }
-
-    /// Load conversation history from the server and replace the current message list.
-    func loadHistory() {
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                guard let client = self.apiClient else { return }
-                let conversations = try await client.getHistory()
-
-                // Flatten conversation messages into ChatMessages
-                let historyMessages: [ChatMessage] = conversations.flatMap { conversation in
-                    conversation.messages.map { msg in
-                        ChatMessage(
-                            id: msg.id,
-                            role: msg.role,
-                            text: msg.text,
-                            timestamp: Date(timeIntervalSince1970: TimeInterval(msg.timestamp) / 1000),
-                            imageData: msg.imageData,
-                            followUps: msg.followUps
-                        )
-                    }
-                }
-
-                self.messages = self.trimToCapacity(historyMessages)
-            } catch {
-                print("[\(ChatViewModel.tag)] loadHistory failed: \(error)")
-                self.emitEvent(.error(
-                    code: "history_error",
-                    message: error.localizedDescription,
-                    fatal: false,
-                    timestamp: Date()
-                ))
-            }
-        }
-    }
-
-    /// Fetch available languages from the server.
-    func loadLanguages() {
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                guard let client = self.apiClient else { return }
-                let languages = try await client.getLanguages()
-                self.availableLanguages = languages
-            } catch {
-                print("[\(ChatViewModel.tag)] loadLanguages failed: \(error)")
-            }
-        }
-    }
-
-    /// Change the active language and reload starters for the new language.
-    func setLanguage(code: String) {
-        let previousLanguage = selectedLanguage
-        selectedLanguage = code
-        loadStarters()
-
-        // Emit LanguageChanged event
-        emitEvent(.languageChanged(
-            from: previousLanguage,
-            to: code,
-            timestamp: Date()
-        ))
-    }
-
-    /// Load starter questions for the current language.
-    func loadStarters() {
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                guard let client = self.apiClient else { return }
-                let starters = try await client.getStarters(language: self.selectedLanguage)
-                self.starterQuestions = starters
-            } catch {
-                print("[\(ChatViewModel.tag)] loadStarters failed: \(error)")
-            }
-        }
-    }
-
-    /// Submit onboarding data (location + language) and navigate to the chat screen.
-    func completeOnboarding(lat: Double, lng: Double, language: String) {
-        Task { [weak self] in
-            guard let self = self else { return }
-            do {
-                guard let client = self.apiClient else { return }
-                try await client.submitOnboarding(
-                    location: Location(lat: lat, lng: lng),
-                    language: language
+                let resp = try await client.sendImageAnalysis(
+                    conversationId: convId, base64Image: base64Image,
+                    imageName: imageName, latitude: latitude, longitude: longitude, query: query
                 )
-                self.setLanguage(code: language)
+                let followUps = resp.followUpQuestions ?? []
+                let aiMsg = ChatMessage(id: resp.messageId, role: "assistant",
+                                        text: resp.response, followUps: followUps)
+                self.appendMessage(aiMsg)
+                self.chatState = .complete
+            } catch {
+                print("[\(Self.tag)] sendQueryWithImage failed: \(error)")
+                self.chatState = .error(code: "image_error", message: error.localizedDescription, retryable: true)
+            }
+        }
+    }
+
+    // MARK: - Voice / STT
+
+    func transcribeAndSendAudio(_ audioData: Data, conversationId: String? = nil) {
+        guard let client = apiClient else { return }
+        chatState = .sending
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let userId = await TokenStore.shared.userId
+                let request = TranscribeAudioRequest(
+                    audioData: audioData, userId: userId,
+                    conversationId: conversationId ?? self.conversationId,
+                    language: self.selectedLanguage
+                )
+                let resp = try await client.transcribeAudio(request)
+                if resp.error { throw NetworkError.unknown("Transcription failed") }
+                let text = resp.heardInputQuery ?? ""
+                self.sendQuery(text: text, inputMethod: "voice")
+            } catch {
+                print("[\(Self.tag)] transcribeAudio failed: \(error)")
+                self.chatState = .error(code: "audio_error", message: error.localizedDescription, retryable: true)
+            }
+        }
+    }
+
+    // MARK: - History / Conversation list
+
+    func loadConversationList() {
+        guard let client = apiClient else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let userId = await TokenStore.shared.userId
+                let list = try await client.fetchConversationList(userId: userId)
+                self.conversationList = list
+            } catch {
+                print("[\(Self.tag)] loadConversationList failed: \(error)")
+            }
+        }
+    }
+
+    func loadConversation(_ item: ConversationListItem) {
+        guard let convId = item.conversationId, let client = apiClient else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let history = try await client.fetchChatHistory(conversationId: convId)
+                self.conversationId = convId
+                self.messages = self.processHistoryItems(history.data)
                 self.currentScreen = .chat
-
-                // Emit OnboardingCompleted event
-                self.emitEvent(.onboardingCompleted(
-                    sessionId: self.sessionId,
-                    location: (lat: lat, lng: lng),
-                    language: language,
-                    timestamp: Date()
-                ))
             } catch {
-                print("[\(ChatViewModel.tag)] completeOnboarding failed: \(error)")
-                self.emitEvent(.error(
-                    code: "onboarding_error",
-                    message: error.localizedDescription,
-                    fatal: false,
-                    timestamp: Date()
-                ))
+                print("[\(Self.tag)] loadConversation failed: \(error)")
             }
         }
     }
 
-    /// Navigate to a different screen within the SDK.
-    func navigateTo(screen: Screen) {
-        currentScreen = screen
+    /// Converts raw history items into ChatMessage objects.
+    /// Groups into sections (user message = section start), reverses so oldest is first,
+    /// and attaches type-7 follow-up rows to the preceding AI bubble.
+    private func processHistoryItems(_ items: [ChatHistoryItem]) -> [ChatMessage] {
+        var sections: [[ChatHistoryItem]] = []
+        var current: [ChatHistoryItem]   = []
+        for item in items {
+            if [1, 2, 11].contains(item.messageTypeId), !current.isEmpty {
+                sections.append(current); current = []
+            }
+            current.append(item)
+        }
+        if !current.isEmpty { sections.append(current) }
+        let ordered = sections.reversed().flatMap { $0 }
+
+        var result: [ChatMessage] = []
+        for item in ordered {
+            if item.messageTypeId == 7 {
+                guard let qs = item.questions, !qs.isEmpty else { continue }
+                if let lastIdx = result.indices.last(where: { result[$0].role == "assistant" }) {
+                    result[lastIdx].followUps = qs.map {
+                        FollowUpQuestionOption(followUpQuestionId: $0.followUpQuestionId,
+                                               question: $0.question, sequence: $0.sequence)
+                    }
+                }
+            } else if let msg = historyItemToMessage(item) {
+                result.append(msg)
+            }
+        }
+        return result
     }
 
-    // MARK: - Private Helpers
-
-    /// Append a message and enforce the memory cap.
-    private func appendMessage(_ message: ChatMessage) {
-        messages = trimToCapacity(messages + [message])
-    }
-
-    /// Insert or update the assistant message in the list.
-    private func upsertAssistantMessage(
-        id: String,
-        message: ChatMessage,
-        alreadyAdded: Bool
-    ) {
-        if alreadyAdded {
-            messages = messages.map { $0.id == id ? message : $0 }
-        } else {
-            messages = trimToCapacity(messages + [message])
+    private func historyItemToMessage(_ item: ChatHistoryItem) -> ChatMessage? {
+        switch item.messageTypeId {
+        case 1, 2, 11:   // user text / voice / image
+            let text = item.queryText ?? item.heardQueryText ?? ""
+            guard !text.isEmpty else { return nil }
+            return ChatMessage(id: item.messageId, role: "user", text: text,
+                               imageData: item.queryMediaFileUrl)
+        case 3, 4, 5, 6: // assistant text / image response
+            let text = item.responseText ?? ""
+            guard !text.isEmpty else { return nil }
+            return ChatMessage(id: item.messageId, role: "assistant", text: text)
+        default: return nil
         }
     }
 
-    /// Apply a transformation to a specific assistant message.
-    private func updateAssistantMessage(id: String, transform: (ChatMessage) -> ChatMessage) {
-        messages = messages.map { $0.id == id ? transform($0) : $0 }
+    // MARK: - Language
+
+    func loadLanguages() {
+        guard let client = apiClient else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let cc = await TokenStore.shared.countryCode
+                let countryCode = cc.isEmpty ? self.config.countryCode : cc
+                let groups = try await client.getSupportedLanguages(countryCode: countryCode.isEmpty ? nil : countryCode)
+                self.availableLanguages = groups.flatMap { $0.languages }
+            } catch {
+                print("[\(Self.tag)] loadLanguages failed: \(error)")
+            }
+        }
     }
 
-    /// Trim a list to ``FarmerChatConfig/maxMessagesInMemory``, removing the oldest entries.
-    private func trimToCapacity(_ list: [ChatMessage]) -> [ChatMessage] {
+    func setLanguage(code: String) {
+        selectedLanguage = code
+        SdkPreferences.selectedLanguage = code
+    }
+
+    // MARK: - Onboarding
+
+    func completeOnboarding(language: String) {
+        setLanguage(code: language)
+        SdkPreferences.isOnboardingDone = true
+        currentScreen = .chat
+    }
+
+    // MARK: - Navigation
+
+    func navigateTo(screen: Screen) { currentScreen = screen }
+
+    func loadStarters() {
+        // Starter questions are not used in the UIKit SDK's MVP; no-op.
+    }
+
+    // MARK: - New conversation
+
+    func startNewConversation() {
+        conversationId = nil
+        messages = []
+        chatState = .idle
+    }
+
+    // MARK: - Private helpers
+
+    private func appendMessage(_ msg: ChatMessage) {
         let cap = config.maxMessagesInMemory
-        if list.count > cap {
-            return Array(list.suffix(cap))
-        }
-        return list
+        messages.append(msg)
+        if messages.count > cap { messages = Array(messages.suffix(cap)) }
     }
 
-    /// Emit a ``FarmerChatEvent`` to the host app's callback.
+    private func updateMessage(id: String, transform: (inout ChatMessage) -> Void) {
+        if let idx = messages.firstIndex(where: { $0.id == id }) {
+            transform(&messages[idx])
+        }
+    }
+
     private func emitEvent(_ event: FarmerChatEvent) {
         FarmerChat.shared.eventCallback?(event)
-    }
-
-    // MARK: - SSE Payload Parsing
-
-    /// Extract the text content from a "token" SSE data payload.
-    private func parseTokenText(_ data: String) -> String {
-        do {
-            guard let jsonData = data.data(using: .utf8),
-                  let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                  let text = json["text"] as? String else {
-                return data
-            }
-            return text
-        } catch {
-            // Not valid JSON -- treat the raw string as the token text
-            return data
-        }
-    }
-
-    /// Parse follow-up suggestions from a "followup" SSE data payload.
-    private func parseFollowUps(_ data: String) -> [String] {
-        do {
-            guard let jsonData = data.data(using: .utf8),
-                  let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-                  let arr = json["follow_ups"] as? [String] else {
-                return []
-            }
-            return arr.filter { !$0.isEmpty }
-        } catch {
-            return []
-        }
-    }
-
-    /// Intermediate holder for parsed "message" event data.
-    private struct ParsedMessage {
-        let id: String
-        let text: String
-        let followUps: [String]
-        let sources: [Source]
-        let imageUrl: String?
-    }
-
-    /// Parse a full "message" (non-streaming JSON) event.
-    private func parseMessageEvent(_ data: String) -> ParsedMessage {
-        do {
-            guard let jsonData = data.data(using: .utf8),
-                  let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-                return ParsedMessage(id: "", text: data, followUps: [], sources: [], imageUrl: nil)
-            }
-
-            let id = json["id"] as? String ?? ""
-            let text = json["text"] as? String ?? ""
-
-            let followUps: [String] = (json["follow_ups"] as? [String])?.filter { !$0.isEmpty } ?? []
-
-            let sources: [Source] = (json["sources"] as? [[String: Any]])?.map { srcJson in
-                Source(
-                    title: srcJson["title"] as? String ?? "",
-                    url: srcJson["url"] as? String
-                )
-            } ?? []
-
-            let imageUrl = json["image_url"] as? String
-
-            return ParsedMessage(
-                id: id,
-                text: text,
-                followUps: followUps,
-                sources: sources,
-                imageUrl: imageUrl
-            )
-        } catch {
-            return ParsedMessage(id: "", text: data, followUps: [], sources: [], imageUrl: nil)
-        }
-    }
-
-    /// Parse an "error" SSE event and return (code, message).
-    private func parseErrorEvent(_ data: String) -> (code: String, message: String) {
-        do {
-            guard let jsonData = data.data(using: .utf8),
-                  let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
-                return (code: "unknown", message: data)
-            }
-
-            let code: String
-            if let codeStr = json["code"] as? String {
-                code = codeStr
-            } else if let codeInt = json["code"] as? Int {
-                code = String(codeInt)
-            } else {
-                code = "unknown"
-            }
-
-            let message = json["message"] as? String ?? "Unknown error"
-            return (code: code, message: message)
-        } catch {
-            return (code: "unknown", message: data)
-        }
     }
 }
