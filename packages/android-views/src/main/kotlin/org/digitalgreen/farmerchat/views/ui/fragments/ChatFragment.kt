@@ -235,6 +235,10 @@ internal class ChatFragment : Fragment() {
                     Log.w(TAG, "Feedback click failed", e)
                 }
             },
+            onSynthesise = { serverMessageId, text ->
+                try { viewModel.synthesiseAudio(serverMessageId, text) }
+                catch (_: Exception) { null }
+            },
         )
 
         binding.recyclerMessages.apply {

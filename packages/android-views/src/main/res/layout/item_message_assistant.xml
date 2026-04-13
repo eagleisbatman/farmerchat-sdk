@@ -58,6 +58,68 @@
                 app:chipSpacing="@dimen/fc_padding_extra_small"
                 tools:visibility="visible" />
 
+            <!-- Actions row: Listen + Copy -->
+            <LinearLayout
+                android:id="@+id/actions_row"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginTop="6dp"
+                android:gravity="center_vertical">
+
+                <!-- Listen pill button -->
+                <LinearLayout
+                    android:id="@+id/btn_listen"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingHorizontal="12dp"
+                    android:paddingVertical="6dp"
+                    android:background="@drawable/fc_listen_pill_bg"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:visibility="gone">
+
+                    <ImageView
+                        android:id="@+id/ic_listen"
+                        android:layout_width="14dp"
+                        android:layout_height="14dp"
+                        android:src="@android:drawable/ic_lock_silent_mode_off"
+                        android:contentDescription="@null"
+                        app:tint="@color/fc_primary" />
+
+                    <TextView
+                        android:id="@+id/tv_listen"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:text="Listen"
+                        android:textColor="@color/fc_primary"
+                        android:textSize="11sp"
+                        android:textStyle="normal" />
+
+                    <ProgressBar
+                        android:id="@+id/progress_listen"
+                        android:layout_width="13dp"
+                        android:layout_height="13dp"
+                        android:visibility="gone"
+                        android:indeterminateTint="@color/fc_primary"
+                        style="?android:attr/progressBarStyle" />
+                </LinearLayout>
+
+                <!-- Copy icon button -->
+                <ImageButton
+                    android:id="@+id/btn_copy"
+                    android:layout_width="30dp"
+                    android:layout_height="30dp"
+                    android:layout_marginStart="8dp"
+                    android:src="@android:drawable/ic_menu_edit"
+                    android:background="@drawable/fc_copy_btn_bg"
+                    android:contentDescription="Copy response"
+                    app:tint="@color/fc_text_secondary" />
+            </LinearLayout>
+
             <!-- Feedback row -->
             <LinearLayout
                 android:id="@+id/feedback_row"

@@ -33,17 +33,23 @@ internal final class ChatViewModel: ObservableObject {
         var imageData: String?
         var followUps: [FollowUpQuestionOption]
         var feedbackRating: String?
+        var hideTtsSpeaker: Bool
+        var serverMessageId: String?
 
         init(
             id: String, role: String, text: String,
             timestamp: Date = Date(), inputMethod: String? = nil,
             imageData: String? = nil, followUps: [FollowUpQuestionOption] = [],
-            feedbackRating: String? = nil
+            feedbackRating: String? = nil,
+            hideTtsSpeaker: Bool = false,
+            serverMessageId: String? = nil
         ) {
             self.id = id; self.role = role; self.text = text
             self.timestamp = timestamp; self.inputMethod = inputMethod
             self.imageData = imageData; self.followUps = followUps
             self.feedbackRating = feedbackRating
+            self.hideTtsSpeaker = hideTtsSpeaker
+            self.serverMessageId = serverMessageId
         }
     }
 
@@ -365,6 +371,22 @@ internal final class ChatViewModel: ObservableObject {
 
     func loadStarters() {
         // Starter questions are not used in the UIKit SDK's MVP; no-op.
+    }
+
+    // MARK: - TTS (synthesise_audio)
+
+    /// Calls the synthesise_audio endpoint and returns the audio URL, or nil on failure.
+    func synthesiseAudio(serverMessageId: String, text: String) async -> String? {
+        guard let client = FarmerChat.shared.apiClient else { return nil }
+        do {
+            let userId = await TokenStore.shared.userId
+            let resp = try await client.synthesiseAudio(
+                messageId: serverMessageId, text: text, userId: userId)
+            return resp.audioUrl
+        } catch {
+            print("[\(Self.tag)] synthesiseAudio failed: \(error)")
+            return nil
+        }
     }
 
     // MARK: - New conversation

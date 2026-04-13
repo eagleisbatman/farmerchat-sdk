@@ -1,5 +1,10 @@
 package org.digitalgreen.farmerchat.views.ui.adapters
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +13,9 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.chip.Chip
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.views.databinding.ItemMessageAssistantBinding
 import org.digitalgreen.farmerchat.views.databinding.ItemMessageUserBinding
 import org.digitalgreen.farmerchat.views.viewmodel.ChatViewModel
@@ -25,6 +33,7 @@ import org.digitalgreen.farmerchat.views.viewmodel.ChatViewModel
 internal class MessageAdapter(
     private val onFollowUpClick: (String) -> Unit,
     private val onFeedbackClick: (messageId: String, rating: String) -> Unit,
+    private val onSynthesise: (suspend (serverMessageId: String, text: String) -> String?)? = null,
 ) : ListAdapter<ChatViewModel.ChatMessage, RecyclerView.ViewHolder>(MessageDiffCallback()) {
 
     private companion object {
@@ -98,6 +107,9 @@ internal class MessageAdapter(
         private val binding: ItemMessageAssistantBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        private var mediaPlayer: MediaPlayer? = null
+        private var listenPlaying = false
+
         fun bind(message: ChatViewModel.ChatMessage) {
             try {
                 binding.markdownText.setMarkdownText(message.text)
@@ -113,9 +125,7 @@ internal class MessageAdapter(
                             isClickable = true
                             isCheckable = false
                             setOnClickListener {
-                                try {
-                                    onFollowUpClick(questionText)
-                                } catch (e: Exception) {
+                                try { onFollowUpClick(questionText) } catch (e: Exception) {
                                     Log.w(TAG, "Follow-up chip click failed", e)
                                 }
                             }
@@ -126,40 +136,107 @@ internal class MessageAdapter(
                     binding.followUpChips.visibility = View.GONE
                 }
 
-                // Feedback buttons
-                binding.btnThumbUp.setOnClickListener {
+                // ── Listen button ────────────────────────────────────────────
+                val msgId = message.serverMessageId
+                if (!message.hideTtsSpeaker && !msgId.isNullOrEmpty()) {
+                    binding.btnListen.visibility = View.VISIBLE
+                    setListenState("idle")
+                    binding.btnListen.setOnClickListener {
+                        if (listenPlaying) {
+                            stopAudio()
+                        } else {
+                            val synth = onSynthesise ?: return@setOnClickListener
+                            setListenState("loading")
+                            CoroutineScope(Dispatchers.Main).launch {
+                                try {
+                                    val url = synth(msgId, message.text)
+                                    if (url != null) playAudio(url)
+                                    else setListenState("idle")
+                                } catch (_: Exception) { setListenState("idle") }
+                            }
+                        }
+                    }
+                } else {
+                    binding.btnListen.visibility = View.GONE
+                }
+
+                // ── Copy button ──────────────────────────────────────────────
+                binding.btnCopy.setOnClickListener {
                     try {
-                        onFeedbackClick(message.id, "up")
-                    } catch (e: Exception) {
+                        val cm = binding.root.context
+                            .getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        cm.setPrimaryClip(ClipData.newPlainText("FarmerChat", message.text))
+                    } catch (e: Exception) { Log.w(TAG, "Copy failed", e) }
+                }
+
+                // ── Feedback buttons ─────────────────────────────────────────
+                binding.btnThumbUp.setOnClickListener {
+                    try { onFeedbackClick(message.id, "up") } catch (e: Exception) {
                         Log.w(TAG, "Thumb up click failed", e)
                     }
                 }
                 binding.btnThumbDown.setOnClickListener {
-                    try {
-                        onFeedbackClick(message.id, "down")
-                    } catch (e: Exception) {
+                    try { onFeedbackClick(message.id, "down") } catch (e: Exception) {
                         Log.w(TAG, "Thumb down click failed", e)
                     }
                 }
-
-                // Update feedback button states
                 when (message.feedbackRating) {
-                    "up" -> {
-                        binding.btnThumbUp.isSelected = true
-                        binding.btnThumbDown.isSelected = false
-                    }
-                    "down" -> {
-                        binding.btnThumbUp.isSelected = false
-                        binding.btnThumbDown.isSelected = true
-                    }
-                    else -> {
-                        binding.btnThumbUp.isSelected = false
-                        binding.btnThumbDown.isSelected = false
-                    }
+                    "up"   -> { binding.btnThumbUp.isSelected = true;  binding.btnThumbDown.isSelected = false }
+                    "down" -> { binding.btnThumbUp.isSelected = false; binding.btnThumbDown.isSelected = true }
+                    else   -> { binding.btnThumbUp.isSelected = false; binding.btnThumbDown.isSelected = false }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "AssistantMessageViewHolder.bind failed", e)
             }
+        }
+
+        private fun setListenState(state: String) {
+            when (state) {
+                "loading" -> {
+                    binding.icListen.visibility = View.GONE
+                    binding.tvListen.text = "Loading…"
+                    binding.progressListen.visibility = View.VISIBLE
+                }
+                "playing" -> {
+                    binding.icListen.visibility = View.VISIBLE
+                    binding.icListen.setImageResource(android.R.drawable.ic_media_pause)
+                    binding.tvListen.text = "Stop"
+                    binding.progressListen.visibility = View.GONE
+                }
+                else -> {
+                    binding.icListen.visibility = View.VISIBLE
+                    binding.icListen.setImageResource(android.R.drawable.ic_lock_silent_mode_off)
+                    binding.tvListen.text = "Listen"
+                    binding.progressListen.visibility = View.GONE
+                }
+            }
+        }
+
+        private fun playAudio(url: String) {
+            try {
+                mediaPlayer?.release()
+                mediaPlayer = MediaPlayer().apply {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .setUsage(AudioAttributes.USAGE_MEDIA)
+                            .build()
+                    )
+                    setDataSource(url)
+                    setOnPreparedListener { start(); listenPlaying = true; setListenState("playing") }
+                    setOnCompletionListener { listenPlaying = false; setListenState("idle") }
+                    setOnErrorListener { _, _, _ -> listenPlaying = false; setListenState("idle"); true }
+                    prepareAsync()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "playAudio error", e)
+                listenPlaying = false; setListenState("idle")
+            }
+        }
+
+        private fun stopAudio() {
+            try { mediaPlayer?.stop(); mediaPlayer?.release(); mediaPlayer = null } catch (_: Exception) {}
+            listenPlaying = false; setListenState("idle")
         }
     }
 

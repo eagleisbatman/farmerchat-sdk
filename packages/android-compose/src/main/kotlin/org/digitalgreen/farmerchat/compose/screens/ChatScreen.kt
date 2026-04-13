@@ -247,6 +247,10 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
                                     onFollowUpClick = { text ->
                                         try { viewModel.sendFollowUp(text) } catch (_: Exception) {}
                                     },
+                                    onSynthesise = { msgId, text ->
+                                        try { viewModel.synthesiseAudio(msgId, text) }
+                                        catch (_: Exception) { null }
+                                    },
                                 )
                             }
                         }
