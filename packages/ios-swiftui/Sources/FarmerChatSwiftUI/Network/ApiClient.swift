@@ -392,8 +392,12 @@ internal final class ApiClient {
         applyAuthHeaders(&request, accessToken: accessToken)
 
         let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
-            throw NetworkError.serverError(0, nil)
+        guard let http = response as? HTTPURLResponse else {
+            throw NetworkError.serverError(0, "Invalid response")
+        }
+        guard (200...299).contains(http.statusCode) else {
+            let body = String(data: data, encoding: .utf8)
+            throw NetworkError.serverError(http.statusCode, body)
         }
         return try decoder.decode([SupportedLanguageGroup].self, from: data)
     }
