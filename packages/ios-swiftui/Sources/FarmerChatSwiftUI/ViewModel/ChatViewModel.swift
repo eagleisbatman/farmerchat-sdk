@@ -74,6 +74,7 @@ internal final class ChatViewModel: ObservableObject {
     @Published private(set) var selectedLanguage: String = "en"
     @Published private(set) var conversationList: [ConversationListItem] = []
     @Published private(set) var availableLanguageGroups: [SupportedLanguageGroup] = []
+    @Published private(set) var historyLoading: Bool = false
 
     // MARK: - Internal Bookkeeping
 
@@ -259,6 +260,8 @@ internal final class ChatViewModel: ObservableObject {
         }
         Task { [weak self] in
             guard let self, let client = self.apiClient else { return }
+            self.historyLoading = true
+            defer { self.historyLoading = false }
             do {
                 await self.ensureGuestTokens()
                 let userId = await TokenStore.shared.userId

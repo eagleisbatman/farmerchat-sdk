@@ -78,10 +78,10 @@ internal class ProfileFragment : Fragment() {
     private fun setupLanguageSelector() {
         languageAdapter = LanguageAdapter(
             selectedCode = viewModel.selectedLanguage.value,
-            onLanguageSelected = { code ->
+            onLanguageSelected = { language ->
                 try {
-                    viewModel.setLanguage(code)
-                    languageAdapter.setSelectedCode(code)
+                    viewModel.setLanguage(language.code)
+                    languageAdapter.setSelectedCode(language.code)
                 } catch (e: Exception) {
                     Log.w(TAG, "Language selection failed", e)
                 }
@@ -104,9 +104,9 @@ internal class ProfileFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 // Observe languages
                 launch {
-                    viewModel.availableLanguages.collect { languages ->
+                    viewModel.availableLanguageGroups.collect { groups ->
                         try {
-                            languageAdapter.submitList(languages)
+                            languageAdapter.submitList(groups.flatMap { it.languages })
                         } catch (e: Exception) {
                             Log.w(TAG, "Error updating languages", e)
                         }

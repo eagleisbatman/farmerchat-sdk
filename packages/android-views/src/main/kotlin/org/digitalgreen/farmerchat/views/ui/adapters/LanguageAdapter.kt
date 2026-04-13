@@ -9,23 +9,18 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import org.digitalgreen.farmerchat.views.R
 import org.digitalgreen.farmerchat.views.databinding.ItemLanguageCardBinding
-import org.digitalgreen.farmerchat.views.network.LanguageResponse
+import org.digitalgreen.farmerchat.views.network.SupportedLanguage
 
 /**
  * RecyclerView adapter for language selection cards.
  *
- * Displays language native name, English name, and code. Highlights the currently
+ * Displays language display name, English name, and code. Highlights the currently
  * selected language. Used in both onboarding and profile screens.
- *
- * All bind operations are wrapped in try-catch — the SDK must never crash the host app.
- *
- * @param selectedCode Initially selected language code.
- * @param onLanguageSelected Callback when a language card is tapped.
  */
 internal class LanguageAdapter(
     private var selectedCode: String,
-    private val onLanguageSelected: (String) -> Unit,
-) : ListAdapter<LanguageResponse, LanguageAdapter.LanguageViewHolder>(LanguageDiffCallback()) {
+    private val onLanguageSelected: (SupportedLanguage) -> Unit,
+) : ListAdapter<SupportedLanguage, LanguageAdapter.LanguageViewHolder>(LanguageDiffCallback()) {
 
     private companion object {
         const val TAG = "FC.LanguageAdapter"
@@ -35,7 +30,6 @@ internal class LanguageAdapter(
         try {
             val oldCode = selectedCode
             selectedCode = code
-            // Refresh items that changed selection state
             currentList.forEachIndexed { index, lang ->
                 if (lang.code == oldCode || lang.code == code) {
                     notifyItemChanged(index)
@@ -65,9 +59,9 @@ internal class LanguageAdapter(
         private val binding: ItemLanguageCardBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(language: LanguageResponse) {
+        fun bind(language: SupportedLanguage) {
             try {
-                binding.textNativeName.text = language.nativeName
+                binding.textNativeName.text = language.displayName.takeIf { it.isNotEmpty() } ?: language.name
                 binding.textName.text = language.name
                 binding.textCode.text = language.code.uppercase()
 
@@ -81,7 +75,7 @@ internal class LanguageAdapter(
 
                 binding.root.setOnClickListener {
                     try {
-                        onLanguageSelected(language.code)
+                        onLanguageSelected(language)
                     } catch (e: Exception) {
                         Log.w(TAG, "Language card click failed", e)
                     }
@@ -92,15 +86,10 @@ internal class LanguageAdapter(
         }
     }
 
-    private class LanguageDiffCallback : DiffUtil.ItemCallback<LanguageResponse>() {
-        override fun areItemsTheSame(
-            oldItem: LanguageResponse,
-            newItem: LanguageResponse,
-        ): Boolean = oldItem.code == newItem.code
-
-        override fun areContentsTheSame(
-            oldItem: LanguageResponse,
-            newItem: LanguageResponse,
-        ): Boolean = oldItem == newItem
+    private class LanguageDiffCallback : DiffUtil.ItemCallback<SupportedLanguage>() {
+        override fun areItemsTheSame(oldItem: SupportedLanguage, newItem: SupportedLanguage): Boolean =
+            oldItem.id == newItem.id
+        override fun areContentsTheSame(oldItem: SupportedLanguage, newItem: SupportedLanguage): Boolean =
+            oldItem == newItem
     }
 }

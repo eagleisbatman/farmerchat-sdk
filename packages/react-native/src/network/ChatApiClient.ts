@@ -68,6 +68,7 @@ export class ChatApiClient {
     const authInit = addAuthHeaders(init, accessToken, deviceInfo, this.sdkApiKey);
 
     const url = `${this.baseUrl}/${path}`;
+    console.log(`[FC] → ${init.method ?? 'GET'} ${url}`);
     const response = await fetch(url, authInit);
 
     if (response.status === 401 && !isRetry) {
