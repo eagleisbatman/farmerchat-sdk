@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -176,14 +177,13 @@ private fun ChatTopBar(
         modifier = Modifier.fillMaxWidth(),
         shadowElevation = 4.dp,
     ) {
-        Column {
-            Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
                 // Logo circle 40dp
                 Box(
                     modifier = Modifier
@@ -232,7 +232,6 @@ private fun ChatTopBar(
                         )
                     }
                 }
-            }
         }
     }
 }

@@ -103,7 +103,6 @@ private struct ChatTopBar: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
-                    // Online dot
                     Circle()
                         .fill(onlineDot)
                         .frame(width: 7, height: 7)
@@ -143,7 +142,12 @@ private struct ChatTopBar: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
-        .background(darkSurface)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        // Extend the dark toolbar color behind the status bar while content stays
+        // in the safe area (SwiftUI VStack already pushes content below status bar).
+        .background(alignment: .top) {
+            darkSurface.ignoresSafeArea(edges: .top)
+        }
     }
 }
 
