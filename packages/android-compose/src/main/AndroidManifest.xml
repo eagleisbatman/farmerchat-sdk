@@ -14,7 +14,7 @@
             android:windowSoftInputMode="adjustResize" />
 
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name="org.digitalgreen.farmerchat.compose.media.ComposeFileProvider"
             android:authorities="${applicationId}.fc_compose_provider"
             android:exported="false"
             android:grantUriPermissions="true">

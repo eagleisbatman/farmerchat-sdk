@@ -36,12 +36,16 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -74,11 +78,14 @@ import java.util.TimeZone
  * Displays server-fetched conversations grouped by date.
  * Tapping a conversation loads it into the chat screen.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun HistoryScreen(viewModel: ChatViewModel) {
     val conversations by viewModel.conversationList.collectAsStateWithLifecycle()
     val isLoading by viewModel.historyLoading.collectAsStateWithLifecycle()
     var searchQuery by remember { mutableStateOf("") }
+    var isRefreshing by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         try { viewModel.loadConversationList() } catch (e: Exception) {
@@ -90,6 +97,19 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
     else conversations.filter { it.conversationTitle?.contains(searchQuery, ignoreCase = true) == true }
 
     Box(modifier = Modifier.fillMaxSize().background(HistoryBackground)) {
+        PullToRefreshBox(
+            isRefreshing = isRefreshing,
+            onRefresh = {
+                scope.launch {
+                    try {
+                        isRefreshing = true
+                        viewModel.loadConversationList()
+                    } catch (_: Exception) {}
+                    finally { isRefreshing = false }
+                }
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
             // ── Top bar ──────────────────────────────────────────────────────
@@ -199,6 +219,7 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
                 }
             }
         }
+        } // end PullToRefreshBox
     }
 }
 

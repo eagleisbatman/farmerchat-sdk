@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
@@ -405,7 +406,7 @@ internal class ChatFragment : Fragment() {
             }
             sheetView.findViewById<View?>(R.id.btnChooseGallery)?.setOnClickListener {
                 dialog.dismiss()
-                galleryLauncher.launch(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
             }
             sheetView.findViewById<View?>(R.id.btnCancelImageSource)?.setOnClickListener {
                 dialog.dismiss()

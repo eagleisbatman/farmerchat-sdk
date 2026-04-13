@@ -328,12 +328,55 @@ internal class ChatViewModel : ViewModel() {
                 _chatState.value = ChatUiState.Idle
                 ensureGuestTokensSuspend()
                 val history = client.getChatHistory(conversation.conversationId)
-                val msgs = history.data.mapNotNull { historyItemToChatMessage(it) }
-                _messages.value = msgs
+                _messages.value = processHistoryItems(history.data)
+                // Signal HistoryFragment to navigate back to chat after messages are ready
+                _navigateToChat.value = true
             } catch (e: Exception) {
                 Log.w(TAG, "loadConversation failed: ${e.message}")
             }
         }
+    }
+
+    private val _navigateToChat = MutableStateFlow(false)
+    val navigateToChat: StateFlow<Boolean> = _navigateToChat.asStateFlow()
+
+    fun onNavigateToChatHandled() { _navigateToChat.value = false }
+
+    private fun processHistoryItems(items: List<ConversationHistoryItem>): List<ChatMessage> {
+        val sections = mutableListOf<MutableList<ConversationHistoryItem>>()
+        var current = mutableListOf<ConversationHistoryItem>()
+        for (item in items) {
+            if (item.messageTypeId in listOf(1, 2, 11) && current.isNotEmpty()) {
+                sections.add(current)
+                current = mutableListOf()
+            }
+            current.add(item)
+        }
+        if (current.isNotEmpty()) sections.add(current)
+
+        val ordered = sections.reversed().flatten()
+
+        val result = mutableListOf<ChatMessage>()
+        for (item in ordered) {
+            when (item.messageTypeId) {
+                7 -> {
+                    val qs = item.questions ?: continue
+                    val lastAiIdx = result.indexOfLast { it.role == "assistant" }
+                    if (lastAiIdx >= 0) {
+                        val mapped = qs.map { q ->
+                            FollowUpQuestionOption(
+                                followUpQuestionId = q.followUpQuestionId,
+                                sequence = q.sequence,
+                                question = q.question,
+                            )
+                        }
+                        result[lastAiIdx] = result[lastAiIdx].copy(followUps = mapped)
+                    }
+                }
+                else -> historyItemToChatMessage(item)?.let { result.add(it) }
+            }
+        }
+        return result
     }
 
     private fun historyItemToChatMessage(item: ConversationHistoryItem): ChatMessage? {

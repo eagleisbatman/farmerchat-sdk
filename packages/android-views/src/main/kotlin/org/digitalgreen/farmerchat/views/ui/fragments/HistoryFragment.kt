@@ -133,8 +133,8 @@ internal class HistoryFragment : Fragment() {
     private fun setupRecyclerView() {
         conversationAdapter = ConversationAdapter { conversation ->
             try {
+                // Start loading — navigation happens in observeState() once messages are ready
                 viewModel.loadConversation(conversation)
-                findNavController().navigateUp()
             } catch (e: Exception) {
                 Log.w(TAG, "Conversation click failed", e)
             }
@@ -195,6 +195,20 @@ internal class HistoryFragment : Fragment() {
                             }
                         } catch (e: Exception) {
                             Log.w(TAG, "Error updating error state", e)
+                        }
+                    }
+                }
+
+                // Navigate back to chat only after loadConversation completes with messages
+                launch {
+                    viewModel.navigateToChat.collect { shouldNavigate ->
+                        if (shouldNavigate) {
+                            try {
+                                viewModel.onNavigateToChatHandled()
+                                findNavController().navigateUp()
+                            } catch (e: Exception) {
+                                Log.w(TAG, "navigateToChat failed", e)
+                            }
                         }
                     }
                 }

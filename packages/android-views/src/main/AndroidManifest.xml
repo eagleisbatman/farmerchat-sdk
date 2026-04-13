@@ -13,7 +13,7 @@
             android:exported="false" />
 
         <provider
-            android:name="androidx.core.content.FileProvider"
+            android:name="org.digitalgreen.farmerchat.views.media.ViewsFileProvider"
             android:authorities="${applicationId}.fc_views_provider"
             android:exported="false"
             android:grantUriPermissions="true">

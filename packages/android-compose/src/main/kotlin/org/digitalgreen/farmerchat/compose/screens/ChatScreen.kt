@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -313,7 +314,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
             onCamera  = { launchCamera() },
             onGallery = {
                 galleryLauncher.launch(
-                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                 )
             },
         )

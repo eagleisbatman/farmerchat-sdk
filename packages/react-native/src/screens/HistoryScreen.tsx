@@ -5,6 +5,7 @@ import {
   Pressable,
   SectionList,
   ActivityIndicator,
+  RefreshControl,
   StyleSheet,
   Platform,
   TextInput,
@@ -128,6 +129,7 @@ export function HistoryScreen() {
   const conversations = conversationList as ConversationListItem[];
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -141,6 +143,15 @@ export function HistoryScreen() {
     } finally {
       setLoading(false);
     }
+  }, [loadConversationList]);
+
+  const handleRefresh = useCallback(async () => {
+    try {
+      setRefreshing(true);
+      setError(null);
+      await loadConversationList();
+    } catch { /* no-op */ }
+    finally { setRefreshing(false); }
   }, [loadConversationList]);
 
   useEffect(() => { void fetchHistory(); }, [fetchHistory]);
@@ -219,6 +230,14 @@ export function HistoryScreen() {
         )}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 24 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            colors={[ACCENT_GREEN]}
+            tintColor={ACCENT_GREEN}
+          />
+        }
       />
     );
   }
