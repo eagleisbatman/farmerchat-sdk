@@ -352,6 +352,7 @@ internal class ChatViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val client = apiClient ?: return@launch
+                ensureGuestTokensSuspend()      // tokens must be ready before any API call
                 val groups = client.getSupportedLanguages(countryCode, state)
                 _availableLanguageGroups.value = groups
             } catch (e: Exception) {
@@ -408,6 +409,7 @@ internal class ChatViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val client = apiClient ?: return@launch
+                ensureGuestTokensSuspend()
                 val history = client.getChatHistory(conversationListItem.conversationId)
                 conversationId = conversationListItem.conversationId
                 val msgs = history.data.mapNotNull { item -> historyItemToChatMessage(item) }

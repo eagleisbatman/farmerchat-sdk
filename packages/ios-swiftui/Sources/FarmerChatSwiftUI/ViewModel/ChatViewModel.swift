@@ -270,6 +270,7 @@ internal final class ChatViewModel: ObservableObject {
         Task { [weak self] in
             guard let self, let client = self.apiClient else { return }
             do {
+                await self.ensureGuestTokens()
                 let history = try await client.fetchChatHistory(conversationId: convId)
                 self.conversationId = convId
                 self.messages = history.data.compactMap { self.historyItemToMessage($0) }
@@ -326,8 +327,10 @@ internal final class ChatViewModel: ObservableObject {
     /// Fetch supported languages from the server and update [availableLanguageGroups].
     func loadLanguages() {
         guard let client = apiClient else { return }
-        Task {
+        Task { [weak self] in
+            guard let self else { return }
             do {
+                await self.ensureGuestTokens()          // tokens must exist before the call
                 let groups = try await client.getSupportedLanguages()
                 await MainActor.run {
                     self.availableLanguageGroups = groups
