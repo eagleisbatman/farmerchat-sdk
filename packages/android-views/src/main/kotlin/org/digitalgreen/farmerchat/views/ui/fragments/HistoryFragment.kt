@@ -144,6 +144,16 @@ internal class HistoryFragment : Fragment() {
             viewModel.loadHistory()
         }
 
+        binding.swipeRefresh.apply {
+            setColorSchemeColors(android.graphics.Color.parseColor("#4CAF50"))
+            setOnRefreshListener {
+                try { viewModel.loadHistory() } catch (e: Exception) {
+                    Log.w(TAG, "Refresh failed", e)
+                    isRefreshing = false
+                }
+            }
+        }
+
         binding.recyclerConversations.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = conversationAdapter
@@ -152,8 +162,8 @@ internal class HistoryFragment : Fragment() {
 
     private fun updateEmptyState(isEmpty: Boolean) {
         val loading = viewModel.historyLoading.value
+        binding.swipeRefresh.visibility = if (!isEmpty && !loading) View.VISIBLE else View.GONE
         binding.emptyState.visibility = if (isEmpty && !loading) View.VISIBLE else View.GONE
-        binding.recyclerConversations.visibility = if (!isEmpty && !loading) View.VISIBLE else View.GONE
     }
 
     private fun observeState() {
@@ -173,9 +183,10 @@ internal class HistoryFragment : Fragment() {
                 launch {
                     viewModel.historyLoading.collect { loading ->
                         try {
-                            binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
-                            if (loading) {
-                                binding.recyclerConversations.visibility = View.GONE
+                            binding.progressBar.visibility = if (loading && allConversations.isEmpty()) View.VISIBLE else View.GONE
+                            binding.swipeRefresh.isRefreshing = loading && allConversations.isNotEmpty()
+                            if (loading && allConversations.isEmpty()) {
+                                binding.swipeRefresh.visibility = View.GONE
                                 binding.emptyState.visibility = View.GONE
                             }
                         } catch (e: Exception) {

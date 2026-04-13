@@ -1,176 +1,210 @@
 import Foundation
 
+// MARK: - Network errors
+
+enum NetworkError: Error, LocalizedError {
+    case unauthorized
+    case serverError(Int, String?)
+    case networkUnavailable
+    case decodingError(String)
+    case invalidURL
+    case unknown(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .unauthorized:                return "Unauthorized — token refresh failed"
+        case .serverError(let c, let m):   return "Server error \(c): \(m ?? "")"
+        case .networkUnavailable:          return "No internet connection"
+        case .decodingError(let s):        return "Decoding error: \(s)"
+        case .invalidURL:                  return "Invalid URL"
+        case .unknown(let s):              return s
+        }
+    }
+}
+
+// MARK: - Auth / Guest
+
+struct InitializeGuestUserResponse: Decodable {
+    let accessToken: String
+    let refreshToken: String
+    let userId: String?
+    let createdNow: Bool?
+    let countryCode: String?
+    let country: String?
+    let state: String?
+}
+
+struct TokenResponse: Decodable {
+    let accessToken: String?
+    let refreshToken: String?
+}
+
+// MARK: - Conversation
+
+struct NewConversationResponse: Decodable {
+    let conversationId: String
+    let message: String
+    let showPopup: Bool
+}
+
+// MARK: - Follow-up
+
+struct FollowUpQuestionOption: Decodable {
+    let followUpQuestionId: String?
+    let question: String?
+    let sequence: Int?
+}
+
+// MARK: - Text prompt
+
+struct TextPromptResponse: Decodable {
+    let error: Bool
+    let message: String?
+    let messageId: String?
+    let response: String?
+    let translatedResponse: String?
+    let followUpQuestions: [FollowUpQuestionOption]?
+    let sectionMessageId: String?
+}
+
+// MARK: - Image analysis
+
+struct ImageAnalysisResponse: Decodable {
+    let error: Bool
+    let message: String
+    let messageId: String
+    let response: String
+    let followUpQuestions: [FollowUpQuestionOption]?
+}
+
+// MARK: - Follow-up questions
+
+struct FollowUpQuestionsResponse: Decodable {
+    let messageId: String
+    let sectionMessageId: String
+    let questions: [FollowUpQuestion]?
+}
+
+struct FollowUpQuestion: Decodable {
+    let followUpQuestionId: String
+    let question: String
+    let sequence: Int
+}
+
+// MARK: - TTS / STT
+
+struct SynthesiseAudioResponse: Decodable {
+    let audioUrl: String?
+    let messageId: String?
+    let status: String?
+}
+
+struct TranscribeAudioRequest {
+    let audioData: Data
+    let userId: String
+    let conversationId: String?
+    let language: String?
+
+    init(audioData: Data, userId: String, conversationId: String? = nil, language: String? = nil) {
+        self.audioData = audioData
+        self.userId = userId
+        self.conversationId = conversationId
+        self.language = language
+    }
+}
+
+struct TranscribeAudioResponse: Decodable {
+    let message: String?
+    let heardInputQuery: String?
+    let confidenceScore: Double?
+    let error: Bool
+    let messageId: String
+    let transcriptionId: String?
+}
+
+// MARK: - Language
+
+struct SupportedLanguage: Decodable, Equatable {
+    let id: Int
+    let name: String
+    let code: String
+    let displayName: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, code
+        case displayName = "display_name"
+    }
+}
+
+struct SupportedLanguageGroup: Decodable {
+    let displayName: String?
+    let flag: String?
+    let languages: [SupportedLanguage]
+
+    enum CodingKeys: String, CodingKey {
+        case displayName = "displayName"
+        case flag        = "flag"
+        case languages
+    }
+}
+
+// MARK: - History / Conversation list
+
+struct ConversationListItem: Decodable {
+    var id: String { conversationId ?? UUID().uuidString }
+    let conversationId: String?
+    let conversationTitle: String?
+    let createdOn: String?
+    let messageType: String?
+    let grouping: String?
+    let contentProviderLogo: String?
+}
+
+struct HistoryFollowUpQuestion: Decodable {
+    let followUpQuestionId: String
+    let question: String
+    let sequence: Int
+}
+
+struct ChatHistoryItem: Decodable {
+    let messageTypeId: Int
+    let messageType: String
+    let messageId: String
+    let queryText: String?
+    let heardQueryText: String?
+    let responseText: String?
+    let questions: [HistoryFollowUpQuestion]?
+    let queryMediaFileUrl: String?
+    let contentProviderLogo: String?
+    let hideTtsSpeaker: Bool?
+    let messageInputTime: String?
+}
+
+struct ConversationChatHistoryResponse: Decodable {
+    let conversationId: String
+    let data: [ChatHistoryItem]
+}
+
 // MARK: - SSE
 
 /// A single Server-Sent Event parsed from the stream.
-///
-/// - `event`: Event type — "token", "followup", "done", "message", "error".
-/// - `data`: Raw JSON string payload.
-internal struct SseEvent {
+struct SseEvent {
     let event: String
     let data: String
 }
 
-// MARK: - Requests
+// MARK: - API Error (legacy, kept for old code compatibility)
 
-/// Request body for sending a chat query.
-internal struct QueryRequest {
-    let text: String
-    let inputMethod: String
-    let language: String
-    let imageData: String?
-    let location: Location?
-
-    init(
-        text: String,
-        inputMethod: String,
-        language: String,
-        imageData: String? = nil,
-        location: Location? = nil
-    ) {
-        self.text = text
-        self.inputMethod = inputMethod
-        self.language = language
-        self.imageData = imageData
-        self.location = location
-    }
-
-    /// Serialize to a JSON dictionary for the request body.
-    func toJsonData() throws -> Data {
-        var dict: [String: Any] = [
-            "text": text,
-            "input_method": inputMethod,
-            "language": language,
-        ]
-        if let imageData = imageData {
-            dict["image_data"] = imageData
-        }
-        if let location = location {
-            dict["location"] = ["lat": location.lat, "lng": location.lng]
-        }
-        return try JSONSerialization.data(withJSONObject: dict, options: [])
-    }
-}
-
-/// Request body for submitting feedback on a response.
-internal struct FeedbackRequest {
-    let responseId: String
-    let rating: String
-    let comment: String?
-
-    init(responseId: String, rating: String, comment: String? = nil) {
-        self.responseId = responseId
-        self.rating = rating
-        self.comment = comment
-    }
-
-    /// Serialize to a JSON dictionary for the request body.
-    func toJsonData() throws -> Data {
-        var dict: [String: Any] = [
-            "response_id": responseId,
-            "rating": rating,
-        ]
-        if let comment = comment {
-            dict["comment"] = comment
-        }
-        return try JSONSerialization.data(withJSONObject: dict, options: [])
-    }
-}
-
-// MARK: - Responses
-
-/// A single message within a conversation history entry.
-internal struct MessageResponse {
-    let id: String
-    let role: String
-    let text: String
-    let timestamp: Int64
-    let imageData: String?
-    let followUps: [String]
-
-    /// Parse from a JSON dictionary.
-    static func fromJson(_ json: [String: Any]) -> MessageResponse {
-        let followUpsArray = json["follow_ups"] as? [String] ?? []
-        return MessageResponse(
-            id: json["id"] as? String ?? "",
-            role: json["role"] as? String ?? "",
-            text: json["text"] as? String ?? "",
-            timestamp: (json["timestamp"] as? NSNumber)?.int64Value ?? 0,
-            imageData: json["image_data"] as? String,
-            followUps: followUpsArray
-        )
-    }
-}
-
-/// A conversation returned from the history endpoint.
-internal struct ConversationResponse {
-    let id: String
-    let title: String
-    let messages: [MessageResponse]
-    let createdAt: Int64
-    let updatedAt: Int64
-
-    /// Parse from a JSON dictionary.
-    static func fromJson(_ json: [String: Any]) -> ConversationResponse {
-        let messagesArray = json["messages"] as? [[String: Any]] ?? []
-        let messages = messagesArray.map { MessageResponse.fromJson($0) }
-        return ConversationResponse(
-            id: json["id"] as? String ?? "",
-            title: json["title"] as? String ?? "",
-            messages: messages,
-            createdAt: (json["created_at"] as? NSNumber)?.int64Value ?? 0,
-            updatedAt: (json["updated_at"] as? NSNumber)?.int64Value ?? 0
-        )
-    }
-}
-
-/// A language option returned from the languages endpoint.
-internal struct LanguageResponse {
-    let code: String
-    let name: String
-    let nativeName: String
-
-    /// Parse from a JSON dictionary.
-    static func fromJson(_ json: [String: Any]) -> LanguageResponse {
-        LanguageResponse(
-            code: json["code"] as? String ?? "",
-            name: json["name"] as? String ?? "",
-            nativeName: json["native_name"] as? String ?? ""
-        )
-    }
-}
-
-/// A starter question returned from the starters endpoint.
-internal struct StarterQuestionResponse {
-    let text: String
-    let category: String?
-
-    /// Parse from a JSON dictionary.
-    static func fromJson(_ json: [String: Any]) -> StarterQuestionResponse {
-        StarterQuestionResponse(
-            text: json["text"] as? String ?? "",
-            category: json["category"] as? String
-        )
-    }
-}
-
-/// Geographic coordinates.
-internal struct Location {
-    let lat: Double
-    let lng: Double
-}
-
-// MARK: - API Error
-
-/// Error representing an HTTP error from the FarmerChat API.
-///
-/// - `statusCode`: HTTP status code.
-/// - `errorBody`: Raw error response body from the server.
-internal struct ApiError: Error, LocalizedError {
+struct ApiError: Error, LocalizedError {
     let statusCode: Int
     let errorBody: String
 
-    var errorDescription: String? {
-        "HTTP \(statusCode): \(errorBody)"
-    }
+    var errorDescription: String? { "HTTP \(statusCode): \(errorBody)" }
+}
+
+// MARK: - Geographic coordinates
+
+struct Location {
+    let lat: Double
+    let lng: Double
 }

@@ -1,19 +1,29 @@
 #if canImport(UIKit)
 import UIKit
 import Combine
+import AVFoundation
+import PhotosUI
 
 /// Main chat view controller.
-///
-/// Layout: TopBar + ConnectivityBanner + (StarterQuestions or MessageTableView) +
-///         StreamingIndicator + ErrorBanner + InputBar
-///
-/// Observes `ChatViewModel` via Combine subscriptions on `$messages`, `$chatState`, etc.
+/// Layout: TopBar + ConnectivityBanner + WeatherWidget (optional) + (StarterArea or MessageList)
+///         + StreamingBar + ErrorBar + InputBar
 internal final class ChatViewController: UIViewController {
 
     // MARK: - Properties
 
     private let viewModel = ChatViewModel()
     private var cancellables = Set<AnyCancellable>()
+
+    // Audio recording
+    private var audioRecorder: AVAudioRecorder?
+    private var audioRecordingURL: URL?
+    private var isRecording = false
+    private var recordingTimer: Timer?
+    private var voiceOverlay: UIView?
+
+    // Weather widget
+    private let weatherCard = UIView()
+    private var weatherCardHeightConstraint: NSLayoutConstraint!
 
     // MARK: - Subviews
 
@@ -74,10 +84,11 @@ internal final class ChatViewController: UIViewController {
     // MARK: - Setup UI
 
     private func setupUI() {
-        view.backgroundColor = UIColor(white: 0.95, alpha: 1.0)
+        view.backgroundColor = UIColor(red: 0.09, green: 0.09, blue: 0.12, alpha: 1)
 
         setupTopBar()
         setupConnectivityBanner()
+        setupWeatherWidget()
         setupStarterArea()
         setupTableView()
         setupStreamingBar()
@@ -85,6 +96,71 @@ internal final class ChatViewController: UIViewController {
         setupInputBar()
         setupConstraints()
         setupKeyboardHandling()
+    }
+
+    private func setupWeatherWidget() {
+        let config = FarmerChat.getConfig()
+        weatherCard.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(weatherCard)
+
+        let hasWeather = config.weatherTemp != nil
+        weatherCardHeightConstraint = weatherCard.heightAnchor.constraint(equalToConstant: hasWeather ? 72 : 0)
+
+        guard hasWeather,
+              let temp = config.weatherTemp,
+              let loc  = config.weatherLocation else { return }
+
+        weatherCard.backgroundColor = UIColor(red: 0.0, green: 0.39, blue: 0.22, alpha: 0.85)
+        weatherCard.layer.cornerRadius = 12
+        weatherCard.layer.masksToBounds = true
+        let tap = UITapGestureRecognizer(target: self, action: #selector(weatherCardTapped))
+        weatherCard.addGestureRecognizer(tap)
+
+        let tempLabel = UILabel()
+        tempLabel.text = temp
+        tempLabel.font = .boldSystemFont(ofSize: 20)
+        tempLabel.textColor = .white
+        tempLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let locLabel = UILabel()
+        locLabel.text = loc
+        locLabel.font = .systemFont(ofSize: 12)
+        locLabel.textColor = UIColor.white.withAlphaComponent(0.8)
+        locLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let leftStack = UIStackView(arrangedSubviews: [tempLabel, locLabel])
+        leftStack.axis = .vertical; leftStack.spacing = 2
+        leftStack.translatesAutoresizingMaskIntoConstraints = false
+        weatherCard.addSubview(leftStack)
+
+        if let crop = config.cropName {
+            let cropChip = UILabel()
+            cropChip.text = "🌱 \(crop)"
+            cropChip.font = .systemFont(ofSize: 12, weight: .medium)
+            cropChip.textColor = .white
+            cropChip.backgroundColor = UIColor.white.withAlphaComponent(0.2)
+            cropChip.layer.cornerRadius = 8
+            cropChip.layer.masksToBounds = true
+            cropChip.textAlignment = .center
+            cropChip.translatesAutoresizingMaskIntoConstraints = false
+            weatherCard.addSubview(cropChip)
+            NSLayoutConstraint.activate([
+                cropChip.trailingAnchor.constraint(equalTo: weatherCard.trailingAnchor, constant: -12),
+                cropChip.centerYAnchor.constraint(equalTo: weatherCard.centerYAnchor),
+                cropChip.widthAnchor.constraint(greaterThanOrEqualToConstant: 60),
+                cropChip.heightAnchor.constraint(equalToConstant: 28),
+            ])
+        }
+
+        NSLayoutConstraint.activate([
+            leftStack.leadingAnchor.constraint(equalTo: weatherCard.leadingAnchor, constant: 16),
+            leftStack.centerYAnchor.constraint(equalTo: weatherCard.centerYAnchor),
+        ])
+    }
+
+    @objc private func weatherCardTapped() {
+        let question = "What is the weather forecast for my area and how does it affect my crops?"
+        viewModel.sendWeatherQuery(question)
     }
 
     private func setupTopBar() {
@@ -280,13 +356,13 @@ internal final class ChatViewController: UIViewController {
     }
 
     private var connectivityTopConstraint: NSLayoutConstraint!
-    private var starterTopToConnectivity: NSLayoutConstraint!
-    private var tableTopToConnectivity: NSLayoutConstraint!
+    private var starterTopToWeather: NSLayoutConstraint!
+    private var tableTopToWeather: NSLayoutConstraint!
 
     private func setupConstraints() {
         connectivityTopConstraint = connectivityBanner.topAnchor.constraint(equalTo: topBar.bottomAnchor)
-        starterTopToConnectivity = starterScrollView.topAnchor.constraint(equalTo: connectivityBanner.bottomAnchor)
-        tableTopToConnectivity = tableView.topAnchor.constraint(equalTo: connectivityBanner.bottomAnchor)
+        starterTopToWeather = starterScrollView.topAnchor.constraint(equalTo: weatherCard.bottomAnchor, constant: 4)
+        tableTopToWeather   = tableView.topAnchor.constraint(equalTo: weatherCard.bottomAnchor, constant: 4)
 
         NSLayoutConstraint.activate([
             // Top bar
@@ -309,8 +385,14 @@ internal final class ChatViewController: UIViewController {
             connectivityBanner.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             connectivityBanner.trailingAnchor.constraint(equalTo: view.trailingAnchor),
 
+            // Weather card
+            weatherCard.topAnchor.constraint(equalTo: connectivityBanner.bottomAnchor, constant: 8),
+            weatherCard.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 12),
+            weatherCard.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -12),
+            weatherCardHeightConstraint,
+
             // Starter area
-            starterTopToConnectivity,
+            starterTopToWeather,
             starterScrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             starterScrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             starterScrollView.bottomAnchor.constraint(equalTo: streamingBar.topAnchor),
@@ -325,7 +407,7 @@ internal final class ChatViewController: UIViewController {
             starterPromptLabel.trailingAnchor.constraint(equalTo: starterStack.trailingAnchor, constant: -16),
 
             // Table view
-            tableTopToConnectivity,
+            tableTopToWeather,
             tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             tableView.bottomAnchor.constraint(equalTo: streamingBar.topAnchor),
@@ -432,7 +514,7 @@ internal final class ChatViewController: UIViewController {
         viewModel.$starterQuestions
             .receive(on: DispatchQueue.main)
             .sink { [weak self] starters in
-                self?.buildStarterChips(starters)
+                self?.buildStarterStringChips(starters)
             }
             .store(in: &cancellables)
 
@@ -453,13 +535,9 @@ internal final class ChatViewController: UIViewController {
             errorBar.isHidden = true
             stopDotAnimation()
         case .sending:
-            streamingBar.isHidden = true
-            errorBar.isHidden = true
-        case .streaming:
             streamingBar.isHidden = false
             errorBar.isHidden = true
             startDotAnimation()
-            scrollToBottom(animated: false)
         case .error(_, let message, let retryable):
             streamingBar.isHidden = true
             errorBar.isHidden = false
@@ -473,8 +551,8 @@ internal final class ChatViewController: UIViewController {
     private func updateInputEnabled() {
         let isInputDisabled: Bool
         switch viewModel.chatState {
-        case .sending, .streaming: isInputDisabled = true
-        default: isInputDisabled = false
+        case .sending: isInputDisabled = true
+        default:       isInputDisabled = false
         }
         inputBar.isEnabled = !isInputDisabled && viewModel.isConnected
     }
@@ -499,18 +577,15 @@ internal final class ChatViewController: UIViewController {
 
     // MARK: - Starter Chips
 
-    private func buildStarterChips(_ starters: [StarterQuestionResponse]) {
+    private func buildStarterStringChips(_ starters: [String]) {
         starterChipStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
         let primaryColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
         let cornerRadius = FarmerChat.getConfig().theme?.cornerRadius ?? 12
-
-        for starter in starters {
+        for text in starters {
             let btn = UIButton(type: .system)
-            btn.setTitle(starter.text, for: .normal)
+            btn.setTitle(text, for: .normal)
             btn.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-            btn.titleLabel?.numberOfLines = 0
-            btn.titleLabel?.textAlignment = .center
+            btn.titleLabel?.numberOfLines = 0; btn.titleLabel?.textAlignment = .center
             btn.setTitleColor(primaryColor, for: .normal)
             btn.backgroundColor = primaryColor.withAlphaComponent(0.08)
             btn.layer.cornerRadius = CGFloat(cornerRadius)
@@ -521,6 +596,7 @@ internal final class ChatViewController: UIViewController {
             starterChipStack.addArrangedSubview(btn)
         }
     }
+
 
     // MARK: - Navigation
 
@@ -533,7 +609,7 @@ internal final class ChatViewController: UIViewController {
             let profileVC = ProfileViewController(viewModel: viewModel)
             navigationController?.pushViewController(profileVC, animated: true)
         case .onboarding:
-            let onboardingVC = OnboardingViewController(viewModel: viewModel)
+            let onboardingVC = OnboardingViewController()
             navigationController?.pushViewController(onboardingVC, animated: true)
         case .chat:
             // Pop back to this VC if navigated away
@@ -596,13 +672,7 @@ extension ChatViewController: UITableViewDataSource {
                 withIdentifier: AssistantMessageCell.reuseIdentifier,
                 for: indexPath
             ) as! AssistantMessageCell
-            let isLastMessage = indexPath.row == viewModel.messages.count - 1
-            let isStreaming: Bool
-            if case .streaming = viewModel.chatState, isLastMessage {
-                isStreaming = true
-            } else {
-                isStreaming = false
-            }
+            let isStreaming = false  // UIKit SDK uses non-streaming JSON responses
             cell.configure(with: message, isStreaming: isStreaming)
             cell.delegate = self
             return cell
@@ -613,16 +683,217 @@ extension ChatViewController: UITableViewDataSource {
 // MARK: - InputBarViewDelegate
 
 extension ChatViewController: InputBarViewDelegate {
+
     func inputBarDidSend(text: String) {
         viewModel.sendQuery(text: text)
     }
 
+    // MARK: Camera / Gallery
+
     func inputBarDidTapCamera() {
-        // TODO: Launch image picker
+        let sheet = UIAlertController(title: "Add Image", message: nil, preferredStyle: .actionSheet)
+        sheet.addAction(UIAlertAction(title: "Camera", style: .default) { [weak self] _ in
+            self?.launchCamera()
+        })
+        sheet.addAction(UIAlertAction(title: "Photo Library", style: .default) { [weak self] _ in
+            self?.launchPhotoLibrary()
+        })
+        sheet.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(sheet, animated: true)
     }
 
+    private func launchCamera() {
+        guard UIImagePickerController.isSourceTypeAvailable(.camera) else { return }
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.delegate   = self
+        present(picker, animated: true)
+    }
+
+    private func launchPhotoLibrary() {
+        var config = PHPickerConfiguration()
+        config.selectionLimit = 1
+        config.filter = .images
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = self
+        present(picker, animated: true)
+    }
+
+    private func handleSelectedImage(_ image: UIImage) {
+        let config  = FarmerChat.getConfig()
+        let maxDim  = CGFloat(config.maxImageDimension)
+        let quality = CGFloat(config.imageCompressionQuality) / 100.0
+        let resized = resizeImage(image, maxDimension: maxDim)
+        guard let data   = resized.jpegData(compressionQuality: quality) else { return }
+        let base64 = data.base64EncodedString()
+        let name   = "photo_\(Int(Date().timeIntervalSince1970)).jpg"
+        viewModel.sendQueryWithImage(base64Image: base64, imageName: name)
+    }
+
+    private func resizeImage(_ image: UIImage, maxDimension: CGFloat) -> UIImage {
+        let size = image.size
+        guard max(size.width, size.height) > maxDimension else { return image }
+        let scale = maxDimension / max(size.width, size.height)
+        let newSize = CGSize(width: size.width * scale, height: size.height * scale)
+        UIGraphicsBeginImageContextWithOptions(newSize, false, 1.0)
+        image.draw(in: CGRect(origin: .zero, size: newSize))
+        let result = UIGraphicsGetImageFromCurrentImageContext() ?? image
+        UIGraphicsEndImageContext()
+        return result
+    }
+
+    // MARK: Voice recording
+
     func inputBarDidTapVoice() {
-        // TODO: Voice input
+        if isRecording {
+            stopRecording()
+        } else {
+            requestMicPermissionAndRecord()
+        }
+    }
+
+    private func requestMicPermissionAndRecord() {
+        AVAudioSession.sharedInstance().requestRecordPermission { [weak self] granted in
+            DispatchQueue.main.async {
+                if granted {
+                    self?.startRecording()
+                } else {
+                    self?.showMicPermissionAlert()
+                }
+            }
+        }
+    }
+
+    private func startRecording() {
+        let tmpDir = FileManager.default.temporaryDirectory
+        let url    = tmpDir.appendingPathComponent("fc_recording_\(Int(Date().timeIntervalSince1970)).m4a")
+        audioRecordingURL = url
+
+        let session = AVAudioSession.sharedInstance()
+        do {
+            try session.setCategory(.playAndRecord, mode: .default, options: .defaultToSpeaker)
+            try session.setActive(true)
+
+            let settings: [String: Any] = [
+                AVFormatIDKey:            Int(kAudioFormatMPEG4AAC),
+                AVSampleRateKey:          44100,
+                AVNumberOfChannelsKey:    1,
+                AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue,
+            ]
+            audioRecorder = try AVAudioRecorder(url: url, settings: settings)
+            audioRecorder?.record()
+            isRecording = true
+            showRecordingOverlay()
+        } catch {
+            print("[FC.ChatVC] Failed to start recording: \(error)")
+        }
+    }
+
+    private func stopRecording() {
+        audioRecorder?.stop()
+        audioRecorder = nil
+        isRecording = false
+        try? AVAudioSession.sharedInstance().setActive(false)
+        dismissRecordingOverlay()
+
+        guard let url = audioRecordingURL,
+              let data = try? Data(contentsOf: url) else { return }
+        audioRecordingURL = nil
+        viewModel.transcribeAndSendAudio(data)
+    }
+
+    private func showRecordingOverlay() {
+        let overlay = UIView(frame: view.bounds)
+        overlay.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        overlay.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+
+        let card = UIView()
+        card.backgroundColor = UIColor(red: 0.12, green: 0.12, blue: 0.16, alpha: 1)
+        card.layer.cornerRadius = 20
+        card.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(card)
+
+        let micIcon = UIImageView(image: UIImage(systemName: "mic.fill",
+            withConfiguration: UIImage.SymbolConfiguration(pointSize: 48)))
+        micIcon.tintColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
+        micIcon.translatesAutoresizingMaskIntoConstraints = false
+
+        let label = UILabel()
+        label.text = "Recording... Tap to stop"
+        label.textColor = .white; label.font = .systemFont(ofSize: 16)
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        card.addSubview(micIcon); card.addSubview(label)
+        NSLayoutConstraint.activate([
+            card.centerXAnchor.constraint(equalTo: overlay.centerXAnchor),
+            card.centerYAnchor.constraint(equalTo: overlay.centerYAnchor),
+            card.widthAnchor.constraint(equalToConstant: 260),
+            card.heightAnchor.constraint(equalToConstant: 160),
+            micIcon.centerXAnchor.constraint(equalTo: card.centerXAnchor),
+            micIcon.topAnchor.constraint(equalTo: card.topAnchor, constant: 32),
+            label.centerXAnchor.constraint(equalTo: card.centerXAnchor),
+            label.topAnchor.constraint(equalTo: micIcon.bottomAnchor, constant: 16),
+        ])
+
+        let tap = UITapGestureRecognizer(target: self, action: #selector(recordingOverlayTapped))
+        overlay.addGestureRecognizer(tap)
+        view.addSubview(overlay)
+        voiceOverlay = overlay
+    }
+
+    private func dismissRecordingOverlay() {
+        voiceOverlay?.removeFromSuperview()
+        voiceOverlay = nil
+    }
+
+    @objc private func recordingOverlayTapped() {
+        stopRecording()
+    }
+
+    private func showMicPermissionAlert() {
+        let alert = UIAlertController(
+            title: "Microphone Access",
+            message: "Please allow microphone access in Settings to use voice input.",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "Settings", style: .default) { _ in
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                UIApplication.shared.open(url)
+            }
+        })
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
+        present(alert, animated: true)
+    }
+}
+
+// MARK: - PHPickerViewControllerDelegate
+
+extension ChatViewController: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        guard let result = results.first else { return }
+        result.itemProvider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
+            DispatchQueue.main.async {
+                if let image = object as? UIImage {
+                    self?.handleSelectedImage(image)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - UIImagePickerControllerDelegate
+
+extension ChatViewController: UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+    func imagePickerController(_ picker: UIImagePickerController,
+                               didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+        picker.dismiss(animated: true)
+        if let image = info[.editedImage] as? UIImage ?? info[.originalImage] as? UIImage {
+            handleSelectedImage(image)
+        }
+    }
+    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
+        picker.dismiss(animated: true)
     }
 }
 

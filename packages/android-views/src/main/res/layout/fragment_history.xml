@@ -125,20 +125,27 @@
         app:layout_constraintEnd_toEndOf="parent"
         tools:visibility="visible" />
 
-    <!-- Conversations list -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recycler_conversations"
+    <!-- Conversations list (wrapped in SwipeRefreshLayout for pull-to-refresh) -->
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipe_refresh"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:paddingTop="4dp"
-        android:paddingBottom="16dp"
-        android:clipToPadding="false"
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/search_layout"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        tools:visibility="visible" />
+        tools:visibility="visible">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/recycler_conversations"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:paddingTop="4dp"
+            android:paddingBottom="16dp"
+            android:clipToPadding="false" />
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
     <!-- Empty state -->
     <LinearLayout

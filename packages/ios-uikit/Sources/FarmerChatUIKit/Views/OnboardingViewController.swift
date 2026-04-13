@@ -1,24 +1,20 @@
 #if canImport(UIKit)
 import UIKit
-import CoreLocation
 import Combine
 
-/// Onboarding view controller with two steps: location permission and language selection.
+/// Two-step onboarding:
+///   Step 1 — Shows the IP-geolocation region detected by `initialize_user` (no GPS permission).
+///   Step 2 — Language selection.
+///
+/// On completion saves language to `SdkPreferences`, marks onboarding done, and pushes `ChatViewController`.
 internal final class OnboardingViewController: UIViewController {
 
     // MARK: - Properties
 
-    private let viewModel: ChatViewModel
+    private let ownViewModel = ChatViewModel()
     private var cancellables = Set<AnyCancellable>()
     private var step = 1
     private var selectedLanguageCode = ""
-
-    // Location
-    private let locationManager = CLLocationManager()
-    private var latitude: Double = 0.0
-    private var longitude: Double = 0.0
-    private var locationObtained = false
-    private var locationDenied = false
 
     // MARK: - Subviews
 
@@ -26,85 +22,67 @@ internal final class OnboardingViewController: UIViewController {
     private let progressBar2 = UIView()
     private let containerView = UIView()
 
-    // Location step views
-    private let locationIcon = UIImageView()
-    private let locationTitle = UILabel()
-    private let locationDescription = UILabel()
-    private let locationDeniedLabel = UILabel()
-    private let shareLocationButton = UIButton(type: .system)
-    private let skipButton = UIButton(type: .system)
-    private let locationObtainedLabel = UILabel()
-    private let continueButton = UIButton(type: .system)
+    // Step 1 — Region
+    private let regionIcon         = UIImageView()
+    private let regionTitle        = UILabel()
+    private let regionDescription  = UILabel()
+    private let regionChip         = UILabel()
+    private let continueButton     = UIButton(type: .system)
 
-    // Language step views
-    private let langIcon = UIImageView()
-    private let langTitle = UILabel()
-    private let langDescription = UILabel()
-    private let langTableView = UITableView()
-    private let getStartedButton = UIButton(type: .system)
-    private let loadingIndicator = UIActivityIndicatorView(style: .medium)
+    // Step 2 — Language
+    private let langIcon           = UIImageView()
+    private let langTitle          = UILabel()
+    private let langDescription    = UILabel()
+    private let langTableView      = UITableView()
+    private let loadingIndicator   = UIActivityIndicatorView(style: .medium)
+    private let getStartedButton   = UIButton(type: .system)
 
     // MARK: - Init
 
-    init(viewModel: ChatViewModel) {
-        self.viewModel = viewModel
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
+    init() { super.init(nibName: nil, bundle: nil) }
+    required init?(coder: NSCoder) { fatalError() }
 
     // MARK: - Lifecycle
 
     override func viewDidLoad() {
         super.viewDidLoad()
         navigationController?.setNavigationBarHidden(true, animated: false)
-        view.backgroundColor = .systemBackground
-        locationManager.delegate = self
-        locationManager.desiredAccuracy = kCLLocationAccuracyHundredMeters
+        view.backgroundColor = UIColor(red: 0.09, green: 0.09, blue: 0.12, alpha: 1)
         setupUI()
         bindViewModel()
-        viewModel.loadLanguages()
+        ownViewModel.loadLanguages()
         showStep(1)
     }
 
     // MARK: - Setup
 
     private func setupUI() {
-        let themeColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
-        let cornerRadius = CGFloat(FarmerChat.getConfig().theme?.cornerRadius ?? 12)
+        let theme = FarmerChat.getConfig().theme
+        let primary = UIColor(hex: theme?.primaryColor ?? "#1B6B3A")
+        let radius  = CGFloat(theme?.cornerRadius ?? 12)
 
-        // Progress bars
         for bar in [progressBar1, progressBar2] {
-            bar.layer.cornerRadius = 2
-            bar.translatesAutoresizingMaskIntoConstraints = false
+            bar.layer.cornerRadius = 2; bar.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(bar)
         }
-        progressBar1.backgroundColor = themeColor
-        progressBar2.backgroundColor = UIColor.systemGray4
+        progressBar1.backgroundColor = primary
+        progressBar2.backgroundColor = UIColor.white.withAlphaComponent(0.2)
 
-        // Container
         containerView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(containerView)
 
-        // Location step
-        setupLocationStep(themeColor: themeColor, cornerRadius: cornerRadius)
-
-        // Language step
-        setupLanguageStep(themeColor: themeColor, cornerRadius: cornerRadius)
+        setupRegionStep(primary: primary, radius: radius)
+        setupLanguageStep(primary: primary, radius: radius)
 
         NSLayoutConstraint.activate([
             progressBar1.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
             progressBar1.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
             progressBar1.heightAnchor.constraint(equalToConstant: 4),
-
             progressBar2.topAnchor.constraint(equalTo: progressBar1.topAnchor),
             progressBar2.leadingAnchor.constraint(equalTo: progressBar1.trailingAnchor, constant: 8),
             progressBar2.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             progressBar2.heightAnchor.constraint(equalToConstant: 4),
             progressBar1.widthAnchor.constraint(equalTo: progressBar2.widthAnchor),
-
             containerView.topAnchor.constraint(equalTo: progressBar1.bottomAnchor, constant: 24),
             containerView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             containerView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -112,225 +90,152 @@ internal final class OnboardingViewController: UIViewController {
         ])
     }
 
-    private func setupLocationStep(themeColor: UIColor, cornerRadius: CGFloat) {
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 72, weight: .regular)
-        locationIcon.image = UIImage(systemName: "location.circle.fill", withConfiguration: iconConfig)
-        locationIcon.tintColor = themeColor
-        locationIcon.translatesAutoresizingMaskIntoConstraints = false
+    private func setupRegionStep(primary: UIColor, radius: CGFloat) {
+        let iconCfg = UIImage.SymbolConfiguration(pointSize: 72)
+        regionIcon.image = UIImage(systemName: "mappin.circle.fill", withConfiguration: iconCfg)
+        regionIcon.tintColor = primary
+        regionIcon.translatesAutoresizingMaskIntoConstraints = false
 
-        locationTitle.text = "Share Your Location"
-        locationTitle.font = .preferredFont(forTextStyle: .title2).withTraits(.traitBold)
-        locationTitle.textAlignment = .center
-        locationTitle.translatesAutoresizingMaskIntoConstraints = false
+        regionTitle.text = "Your Region"
+        regionTitle.font = .boldSystemFont(ofSize: 24)
+        regionTitle.textColor = .white; regionTitle.textAlignment = .center
+        regionTitle.translatesAutoresizingMaskIntoConstraints = false
 
-        locationDescription.text = "Your location helps us provide accurate, region-specific agricultural advice for your area."
-        locationDescription.font = .preferredFont(forTextStyle: .body)
-        locationDescription.textColor = .secondaryLabel
-        locationDescription.textAlignment = .center
-        locationDescription.numberOfLines = 0
-        locationDescription.translatesAutoresizingMaskIntoConstraints = false
+        regionDescription.text = "We detected your region based on your network. This helps us provide relevant agricultural advice."
+        regionDescription.font = .systemFont(ofSize: 15); regionDescription.textColor = UIColor.white.withAlphaComponent(0.7)
+        regionDescription.textAlignment = .center; regionDescription.numberOfLines = 0
+        regionDescription.translatesAutoresizingMaskIntoConstraints = false
 
-        locationDeniedLabel.text = "Location access was denied. You can change this in Settings."
-        locationDeniedLabel.font = .preferredFont(forTextStyle: .caption1)
-        locationDeniedLabel.textColor = .secondaryLabel
-        locationDeniedLabel.textAlignment = .center
-        locationDeniedLabel.numberOfLines = 0
-        locationDeniedLabel.isHidden = true
-        locationDeniedLabel.translatesAutoresizingMaskIntoConstraints = false
+        regionChip.text = "Detecting region..."
+        regionChip.font = .systemFont(ofSize: 14, weight: .medium)
+        regionChip.textColor = .white
+        regionChip.backgroundColor = UIColor.white.withAlphaComponent(0.15)
+        regionChip.layer.cornerRadius = 12; regionChip.layer.masksToBounds = true
+        regionChip.textAlignment = .center
+        regionChip.translatesAutoresizingMaskIntoConstraints = false
 
-        shareLocationButton.setTitle("  Share Location", for: .normal)
-        shareLocationButton.setImage(UIImage(systemName: "location.fill"), for: .normal)
-        shareLocationButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
-        shareLocationButton.tintColor = .white
-        shareLocationButton.setTitleColor(.white, for: .normal)
-        shareLocationButton.backgroundColor = themeColor
-        shareLocationButton.layer.cornerRadius = cornerRadius
-        shareLocationButton.addTarget(self, action: #selector(shareLocationTapped), for: .touchUpInside)
-        shareLocationButton.translatesAutoresizingMaskIntoConstraints = false
-
-        skipButton.setTitle("Skip for now", for: .normal)
-        skipButton.titleLabel?.font = .preferredFont(forTextStyle: .subheadline)
-        skipButton.setTitleColor(.secondaryLabel, for: .normal)
-        skipButton.addTarget(self, action: #selector(skipTapped), for: .touchUpInside)
-        skipButton.translatesAutoresizingMaskIntoConstraints = false
-
-        locationObtainedLabel.text = "\u{2705} Location shared"
-        locationObtainedLabel.font = .preferredFont(forTextStyle: .subheadline)
-        locationObtainedLabel.textColor = .secondaryLabel
-        locationObtainedLabel.textAlignment = .center
-        locationObtainedLabel.isHidden = true
-        locationObtainedLabel.translatesAutoresizingMaskIntoConstraints = false
-
-        continueButton.setTitle("Continue", for: .normal)
-        continueButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        continueButton.setTitle("Continue →", for: .normal)
+        continueButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
         continueButton.setTitleColor(.white, for: .normal)
-        continueButton.backgroundColor = themeColor
-        continueButton.layer.cornerRadius = cornerRadius
-        continueButton.isHidden = true
+        continueButton.backgroundColor = primary; continueButton.layer.cornerRadius = radius
         continueButton.addTarget(self, action: #selector(continueTapped), for: .touchUpInside)
         continueButton.translatesAutoresizingMaskIntoConstraints = false
+
+        // Populate chip with TokenStore data (async)
+        Task { [weak self] in
+            let country = await TokenStore.shared.country
+            let state   = await TokenStore.shared.state
+            await MainActor.run {
+                let text = [state, country].filter { !$0.isEmpty }.joined(separator: ", ")
+                self?.regionChip.text = text.isEmpty ? "📍 Region detected" : "📍 \(text)"
+            }
+        }
     }
 
-    private func setupLanguageStep(themeColor: UIColor, cornerRadius: CGFloat) {
-        let iconConfig = UIImage.SymbolConfiguration(pointSize: 48, weight: .regular)
-        langIcon.image = UIImage(systemName: "globe", withConfiguration: iconConfig)
-        langIcon.tintColor = themeColor
-        langIcon.translatesAutoresizingMaskIntoConstraints = false
+    private func setupLanguageStep(primary: UIColor, radius: CGFloat) {
+        let iconCfg = UIImage.SymbolConfiguration(pointSize: 48)
+        langIcon.image = UIImage(systemName: "globe", withConfiguration: iconCfg)
+        langIcon.tintColor = primary; langIcon.translatesAutoresizingMaskIntoConstraints = false
 
         langTitle.text = "Choose Your Language"
-        langTitle.font = .preferredFont(forTextStyle: .title2).withTraits(.traitBold)
-        langTitle.textAlignment = .center
-        langTitle.translatesAutoresizingMaskIntoConstraints = false
+        langTitle.font = .boldSystemFont(ofSize: 22); langTitle.textColor = .white
+        langTitle.textAlignment = .center; langTitle.translatesAutoresizingMaskIntoConstraints = false
 
         langDescription.text = "Select the language you'd like to use for your farming conversations."
-        langDescription.font = .preferredFont(forTextStyle: .body)
-        langDescription.textColor = .secondaryLabel
-        langDescription.textAlignment = .center
-        langDescription.numberOfLines = 0
+        langDescription.font = .systemFont(ofSize: 15); langDescription.textColor = UIColor.white.withAlphaComponent(0.7)
+        langDescription.textAlignment = .center; langDescription.numberOfLines = 0
         langDescription.translatesAutoresizingMaskIntoConstraints = false
 
         langTableView.register(LanguageCell.self, forCellReuseIdentifier: LanguageCell.reuseIdentifier)
-        langTableView.dataSource = self
-        langTableView.delegate = self
-        langTableView.separatorStyle = .none
-        langTableView.backgroundColor = .clear
+        langTableView.dataSource = self; langTableView.delegate = self
+        langTableView.separatorStyle = .none; langTableView.backgroundColor = .clear
         langTableView.translatesAutoresizingMaskIntoConstraints = false
 
-        loadingIndicator.hidesWhenStopped = true
+        loadingIndicator.hidesWhenStopped = true; loadingIndicator.color = primary
         loadingIndicator.translatesAutoresizingMaskIntoConstraints = false
 
         getStartedButton.setTitle("Get Started", for: .normal)
-        getStartedButton.titleLabel?.font = .preferredFont(forTextStyle: .headline)
+        getStartedButton.titleLabel?.font = .boldSystemFont(ofSize: 17)
         getStartedButton.setTitleColor(.white, for: .normal)
-        getStartedButton.backgroundColor = themeColor
-        getStartedButton.layer.cornerRadius = cornerRadius
+        getStartedButton.backgroundColor = primary; getStartedButton.layer.cornerRadius = radius
         getStartedButton.addTarget(self, action: #selector(getStartedTapped), for: .touchUpInside)
         getStartedButton.translatesAutoresizingMaskIntoConstraints = false
     }
 
-    // MARK: - Show Steps
+    // MARK: - Show steps
 
-    private func showStep(_ step: Int) {
-        self.step = step
+    private func showStep(_ n: Int) {
+        self.step = n
         containerView.subviews.forEach { $0.removeFromSuperview() }
-
-        let themeColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
-        progressBar2.backgroundColor = step >= 2 ? themeColor : UIColor.systemGray4
-
-        if step == 1 {
-            showLocationStep()
-        } else {
-            showLanguageStep()
-        }
+        let primary = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
+        progressBar2.backgroundColor = n >= 2 ? primary : UIColor.white.withAlphaComponent(0.2)
+        if n == 1 { showRegionStep() } else { showLanguageStep() }
     }
 
-    private func showLocationStep() {
-        let views: [UIView] = [locationIcon, locationTitle, locationDescription, locationDeniedLabel,
-                                shareLocationButton, skipButton, locationObtainedLabel, continueButton]
-        views.forEach {
+    private func showRegionStep() {
+        [regionIcon, regionTitle, regionDescription, regionChip, continueButton].forEach {
             containerView.addSubview($0)
         }
-
         NSLayoutConstraint.activate([
-            locationIcon.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 60),
-            locationIcon.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
-            locationTitle.topAnchor.constraint(equalTo: locationIcon.bottomAnchor, constant: 24),
-            locationTitle.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
-            locationDescription.topAnchor.constraint(equalTo: locationTitle.bottomAnchor, constant: 16),
-            locationDescription.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
-            locationDescription.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
-
-            locationDeniedLabel.topAnchor.constraint(equalTo: locationDescription.bottomAnchor, constant: 16),
-            locationDeniedLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
-            locationDeniedLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
-
-            shareLocationButton.bottomAnchor.constraint(equalTo: skipButton.topAnchor, constant: -12),
-            shareLocationButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 24),
-            shareLocationButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -24),
-            shareLocationButton.heightAnchor.constraint(equalToConstant: 52),
-
-            skipButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -32),
-            skipButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
-            locationObtainedLabel.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            locationObtainedLabel.bottomAnchor.constraint(equalTo: continueButton.topAnchor, constant: -12),
-
+            regionIcon.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 60),
+            regionIcon.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            regionTitle.topAnchor.constraint(equalTo: regionIcon.bottomAnchor, constant: 24),
+            regionTitle.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            regionDescription.topAnchor.constraint(equalTo: regionTitle.bottomAnchor, constant: 16),
+            regionDescription.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
+            regionDescription.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
+            regionChip.topAnchor.constraint(equalTo: regionDescription.bottomAnchor, constant: 24),
+            regionChip.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
+            regionChip.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+            regionChip.heightAnchor.constraint(equalToConstant: 36),
             continueButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -32),
             continueButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 24),
             continueButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -24),
             continueButton.heightAnchor.constraint(equalToConstant: 52),
         ])
-
-        updateLocationUI()
     }
 
     private func showLanguageStep() {
-        let views: [UIView] = [langIcon, langTitle, langDescription, langTableView,
-                                loadingIndicator, getStartedButton]
-        views.forEach {
+        [langIcon, langTitle, langDescription, langTableView, loadingIndicator, getStartedButton].forEach {
             containerView.addSubview($0)
         }
-
         NSLayoutConstraint.activate([
             langIcon.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 16),
             langIcon.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
             langTitle.topAnchor.constraint(equalTo: langIcon.bottomAnchor, constant: 16),
             langTitle.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
-            langDescription.topAnchor.constraint(equalTo: langTitle.bottomAnchor, constant: 16),
+            langDescription.topAnchor.constraint(equalTo: langTitle.bottomAnchor, constant: 12),
             langDescription.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 32),
             langDescription.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -32),
-
             langTableView.topAnchor.constraint(equalTo: langDescription.bottomAnchor, constant: 16),
             langTableView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
             langTableView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor),
             langTableView.bottomAnchor.constraint(equalTo: getStartedButton.topAnchor, constant: -16),
-
             loadingIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
             loadingIndicator.centerYAnchor.constraint(equalTo: containerView.centerYAnchor),
-
             getStartedButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 24),
             getStartedButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -24),
             getStartedButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -32),
             getStartedButton.heightAnchor.constraint(equalToConstant: 52),
         ])
-
+        let hasLangs = !ownViewModel.availableLanguages.isEmpty
+        langTableView.isHidden = !hasLangs
+        loadingIndicator.isHidden = hasLangs
+        if !hasLangs { loadingIndicator.startAnimating() }
         langTableView.reloadData()
-        let hasLanguages = !viewModel.availableLanguages.isEmpty
-        langTableView.isHidden = !hasLanguages
-        loadingIndicator.isHidden = hasLanguages
-        if !hasLanguages { loadingIndicator.startAnimating() }
-    }
-
-    private func updateLocationUI() {
-        if locationObtained {
-            shareLocationButton.isHidden = true
-            skipButton.isHidden = true
-            locationObtainedLabel.isHidden = false
-            continueButton.isHidden = false
-        } else {
-            shareLocationButton.isHidden = false
-            skipButton.isHidden = false
-            locationObtainedLabel.isHidden = true
-            continueButton.isHidden = true
-        }
-        locationDeniedLabel.isHidden = !locationDenied
     }
 
     // MARK: - Binding
 
     private func bindViewModel() {
-        viewModel.$availableLanguages
+        ownViewModel.$availableLanguages
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] languages in
-                guard let self = self, self.step == 2 else { return }
-                let hasLanguages = !languages.isEmpty
-                self.langTableView.isHidden = !hasLanguages
-                self.loadingIndicator.isHidden = hasLanguages
-                if hasLanguages { self.loadingIndicator.stopAnimating() }
+            .sink { [weak self] langs in
+                guard let self, self.step == 2 else { return }
+                let has = !langs.isEmpty
+                self.langTableView.isHidden = !has
+                self.loadingIndicator.isHidden = has
+                if has { self.loadingIndicator.stopAnimating() }
                 self.langTableView.reloadData()
             }
             .store(in: &cancellables)
@@ -338,50 +243,19 @@ internal final class OnboardingViewController: UIViewController {
 
     // MARK: - Actions
 
-    @objc private func shareLocationTapped() {
-        locationManager.requestWhenInUseAuthorization()
-    }
-
-    @objc private func skipTapped() {
-        showStep(2)
-    }
-
-    @objc private func continueTapped() {
-        showStep(2)
-    }
+    @objc private func continueTapped() { showStep(2) }
 
     @objc private func getStartedTapped() {
-        let language = selectedLanguageCode.isEmpty ? viewModel.selectedLanguage : selectedLanguageCode
-        viewModel.completeOnboarding(lat: latitude, lng: longitude, language: language)
-    }
-}
-
-// MARK: - CLLocationManagerDelegate
-
-extension OnboardingViewController: CLLocationManagerDelegate {
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last else { return }
-        latitude = location.coordinate.latitude
-        longitude = location.coordinate.longitude
-        locationObtained = true
-        updateLocationUI()
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError error: Error) {
-        print("[FC.Onboarding] Location error: \(error.localizedDescription)")
-    }
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            locationObtained = false
-            manager.requestLocation()
-        case .denied, .restricted:
-            locationDenied = true
-            updateLocationUI()
-        default:
-            break
-        }
+        let lang = selectedLanguageCode.isEmpty ? (ownViewModel.availableLanguages.first?.code ?? "en") : selectedLanguageCode
+        // Persist and mark done
+        SdkPreferences.selectedLanguage   = lang
+        SdkPreferences.isOnboardingDone   = true
+        // Replace onboarding with chat in the nav stack
+        let chatVC = ChatViewController()
+        var stack  = navigationController?.viewControllers ?? []
+        stack.removeLast()
+        stack.append(chatVC)
+        navigationController?.setViewControllers(stack, animated: true)
     }
 }
 
@@ -389,35 +263,20 @@ extension OnboardingViewController: CLLocationManagerDelegate {
 
 extension OnboardingViewController: UITableViewDataSource, UITableViewDelegate {
     func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        viewModel.availableLanguages.count
+        ownViewModel.availableLanguages.count
     }
-
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(
-            withIdentifier: LanguageCell.reuseIdentifier,
-            for: indexPath
-        ) as! LanguageCell
-        let language = viewModel.availableLanguages[indexPath.row]
-        let resolvedSelection = selectedLanguageCode.isEmpty ? viewModel.selectedLanguage : selectedLanguageCode
-        let themeColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
-        cell.configure(language: language, isSelected: resolvedSelection == language.code, themeColor: themeColor)
+            withIdentifier: LanguageCell.reuseIdentifier, for: indexPath) as! LanguageCell
+        let lang     = ownViewModel.availableLanguages[indexPath.row]
+        let selected = selectedLanguageCode.isEmpty ? ownViewModel.selectedLanguage : selectedLanguageCode
+        cell.configure(language: lang, isSelected: selected == lang.code,
+                        themeColor: UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A"))
         return cell
     }
-
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        selectedLanguageCode = viewModel.availableLanguages[indexPath.row].code
+        selectedLanguageCode = ownViewModel.availableLanguages[indexPath.row].code
         tableView.reloadData()
-    }
-}
-
-// MARK: - UIFont+Traits
-
-private extension UIFont {
-    func withTraits(_ traits: UIFontDescriptor.SymbolicTraits) -> UIFont {
-        if let descriptor = fontDescriptor.withSymbolicTraits(traits) {
-            return UIFont(descriptor: descriptor, size: pointSize)
-        }
-        return self
     }
 }
 #endif

@@ -14,7 +14,7 @@ internal final class AssistantMessageCell: UITableViewCell {
 
     weak var delegate: AssistantMessageCellDelegate?
 
-    private var followUps: [String] = []
+    private var followUps: [FollowUpQuestionOption] = []
     private var currentFeedbackRating: String?
     private var isStreaming = false
 
@@ -226,7 +226,7 @@ internal final class AssistantMessageCell: UITableViewCell {
 
         for followUp in followUps {
             let btn = UIButton(type: .system)
-            btn.setTitle(followUp, for: .normal)
+            btn.setTitle(followUp.question ?? "", for: .normal)
             btn.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
             btn.setTitleColor(primaryColor, for: .normal)
             btn.layer.cornerRadius = CGFloat(min(cornerRadius, 16))

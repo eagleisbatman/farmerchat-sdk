@@ -88,22 +88,25 @@ internal final class LanguageCell: UITableViewCell {
 
     // MARK: - Configure
 
-    func configure(language: LanguageResponse, isSelected: Bool, themeColor: UIColor) {
-        nativeNameLabel.text = language.nativeName
-        nameLabel.text = language.nativeName != language.name ? language.name : nil
-        nameLabel.isHidden = language.nativeName == language.name
+    func configure(language: SupportedLanguage, isSelected: Bool, themeColor: UIColor) {
+        nativeNameLabel.text = language.displayName.isEmpty ? language.name : language.displayName
+        nameLabel.text = language.name
+        nameLabel.isHidden = language.displayName == language.name || language.displayName.isEmpty
 
         checkmarkView.isHidden = !isSelected
         checkmarkView.tintColor = themeColor
 
+        nativeNameLabel.textColor = UIColor.white.withAlphaComponent(0.9)
+        nameLabel.textColor = UIColor.white.withAlphaComponent(0.5)
+
         if isSelected {
-            cardView.backgroundColor = themeColor.withAlphaComponent(0.06)
+            cardView.backgroundColor = themeColor.withAlphaComponent(0.15)
             cardView.layer.borderColor = themeColor.cgColor
             cardView.layer.borderWidth = 2
         } else {
-            cardView.backgroundColor = UIColor.systemGray6
-            cardView.layer.borderColor = UIColor.clear.cgColor
-            cardView.layer.borderWidth = 0
+            cardView.backgroundColor = UIColor(red: 0.16, green: 0.16, blue: 0.20, alpha: 1)
+            cardView.layer.borderColor = UIColor.white.withAlphaComponent(0.08).cgColor
+            cardView.layer.borderWidth = 1
         }
     }
 }
