@@ -21,6 +21,21 @@ const TEXT_SECONDARY = '#757575';
 const DIVIDER_COLOR  = '#E0E0E0';
 const ITEM_ICON_BG   = '#E8F5E9';
 
+// ── Date formatting ───────────────────────────────────────────────────────────
+
+function formatRelativeDate(dateStr?: string | null): string {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  if (isNaN(date.getTime())) return dateStr;
+  const now = Date.now();
+  const secs = (now - date.getTime()) / 1000;
+  if (secs < 60) return 'Just now';
+  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
+  if (secs < 172800) return 'Yesterday';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // ── Topic emoji ────────────────────────────────────────────────────────────────
 
 function topicEmoji(title?: string | null): string {
@@ -73,7 +88,7 @@ function ConversationItem({ item, onPress }: { item: ConversationListItem; onPre
       {/* Content */}
       <View style={styles.itemContent}>
         <Text style={styles.itemTitle} numberOfLines={2}>{item.conversation_title ?? 'Conversation'}</Text>
-        <Text style={styles.itemDate}>{item.created_on ?? ''}</Text>
+        <Text style={styles.itemDate}>{formatRelativeDate(item.created_on)}</Text>
       </View>
       <Text style={styles.chevron}>›</Text>
     </Pressable>

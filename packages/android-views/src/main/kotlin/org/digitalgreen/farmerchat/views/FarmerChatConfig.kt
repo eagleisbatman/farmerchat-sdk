@@ -8,8 +8,11 @@ package org.digitalgreen.farmerchat.views
  */
 data class FarmerChatConfig(
 
-    /** Base URL for the FarmerChat API. Defaults to production. */
-    val baseUrl: String = "https://api.farmerchat.digitalgreen.org",
+    /** Base URL for the FarmerChat API. Defaults to development instance. */
+    val baseUrl: String = "https://farmerchat.farmstack.co/mobile-app-dev",
+
+    /** Partner/content provider identifier for multi-tenant setups. */
+    val contentProviderId: String? = null,
 
     /** Primary brand color as ARGB Long (e.g., 0xFF1B6B3A). */
     val primaryColor: Long = 0xFF1B6B3A,

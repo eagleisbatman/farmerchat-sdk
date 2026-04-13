@@ -82,6 +82,7 @@ internal class ApiClient(
 
     private fun openConnection(path: String): HttpURLConnection {
         val url = URL("$base/$path")
+        Log.d(TAG, "→ ${url.toString().replace(base, "[base]")}")
         return (url.openConnection() as HttpURLConnection)
     }
 

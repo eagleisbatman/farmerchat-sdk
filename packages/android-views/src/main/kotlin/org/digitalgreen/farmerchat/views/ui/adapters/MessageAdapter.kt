@@ -107,13 +107,14 @@ internal class MessageAdapter(
                 if (message.followUps.isNotEmpty()) {
                     binding.followUpChips.visibility = View.VISIBLE
                     for (followUp in message.followUps) {
+                        val questionText = followUp.question ?: continue
                         val chip = Chip(binding.root.context).apply {
-                            text = followUp
+                            text = questionText
                             isClickable = true
                             isCheckable = false
                             setOnClickListener {
                                 try {
-                                    onFollowUpClick(followUp)
+                                    onFollowUpClick(questionText)
                                 } catch (e: Exception) {
                                     Log.w(TAG, "Follow-up chip click failed", e)
                                 }

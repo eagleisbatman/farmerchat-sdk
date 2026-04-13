@@ -84,6 +84,10 @@ internal class HistoryFragment : Fragment() {
             }
         }
 
+        binding.btnRetry.setOnClickListener {
+            viewModel.loadHistory()
+        }
+
         binding.recyclerConversations.apply {
             layoutManager = LinearLayoutManager(requireContext())
             adapter = conversationAdapter

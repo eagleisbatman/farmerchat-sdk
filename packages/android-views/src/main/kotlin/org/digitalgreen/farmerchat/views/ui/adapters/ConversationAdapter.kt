@@ -7,31 +7,56 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import org.digitalgreen.farmerchat.views.databinding.ItemConversationCardBinding
-import org.digitalgreen.farmerchat.views.network.ConversationResponse
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
+import org.digitalgreen.farmerchat.views.network.ConversationListItem
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 /**
  * RecyclerView adapter for conversation history cards.
  *
- * Displays conversation title and last-updated date. Tapping a card loads
- * that conversation's messages into the chat view.
+ * Displays conversation title and relative creation date.
+ * Tapping a card loads that conversation.
  *
  * All bind operations are wrapped in try-catch — the SDK must never crash the host app.
- *
- * @param onConversationClick Callback when a conversation card is tapped.
  */
 internal class ConversationAdapter(
-    private val onConversationClick: (ConversationResponse) -> Unit,
-) : ListAdapter<ConversationResponse, ConversationAdapter.ConversationViewHolder>(ConversationDiffCallback()) {
+    private val onConversationClick: (ConversationListItem) -> Unit,
+) : ListAdapter<ConversationListItem, ConversationAdapter.ConversationViewHolder>(ConversationDiffCallback()) {
 
     private companion object {
         const val TAG = "FC.ConversationAdapter"
-        val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter
-            .ofPattern("MMM dd, yyyy", Locale.getDefault())
-            .withZone(ZoneId.systemDefault())
+
+        /** ISO date parsers — ordered from most to least specific. */
+        val DATE_PARSERS: List<SimpleDateFormat> = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+        ).map { pattern ->
+            SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        }
+
+        fun formatDate(dateStr: String?): String {
+            if (dateStr.isNullOrEmpty()) return ""
+            var date: Date? = null
+            for (parser in DATE_PARSERS) {
+                date = try { parser.parse(dateStr) } catch (_: Exception) { null }
+                if (date != null) break
+            }
+            if (date == null) return dateStr
+            val now = System.currentTimeMillis()
+            val diffMs = now - date.time
+            val diffSec = diffMs / 1000
+            return when {
+                diffSec < 60       -> "Just now"
+                diffSec < 3600     -> "${diffSec / 60}m ago"
+                diffSec < 86400    -> "${diffSec / 3600}h ago"
+                diffSec < 172800   -> "Yesterday"
+                else               -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+            }
+        }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ConversationViewHolder {
@@ -53,21 +78,13 @@ internal class ConversationAdapter(
         private val binding: ItemConversationCardBinding,
     ) : RecyclerView.ViewHolder(binding.root) {
 
-        fun bind(conversation: ConversationResponse) {
+        fun bind(conversation: ConversationListItem) {
             try {
-                binding.textTitle.text = conversation.title.ifEmpty { "Untitled Conversation" }
+                binding.textTitle.text = conversation.conversationTitle
+                    ?.takeIf { it.isNotEmpty() } ?: "Conversation"
 
-                val dateText = if (conversation.updatedAt > 0) {
-                    DATE_FORMAT.format(Instant.ofEpochMilli(conversation.updatedAt))
-                } else if (conversation.createdAt > 0) {
-                    DATE_FORMAT.format(Instant.ofEpochMilli(conversation.createdAt))
-                } else {
-                    ""
-                }
-                binding.textDate.text = dateText
-
-                val messageCount = conversation.messages.size
-                binding.textMessageCount.text = "$messageCount messages"
+                binding.textDate.text = formatDate(conversation.createdOn)
+                binding.textMessageCount.text = conversation.grouping?.takeIf { it.isNotEmpty() } ?: ""
 
                 binding.root.setOnClickListener {
                     try {
@@ -82,15 +99,15 @@ internal class ConversationAdapter(
         }
     }
 
-    private class ConversationDiffCallback : DiffUtil.ItemCallback<ConversationResponse>() {
+    private class ConversationDiffCallback : DiffUtil.ItemCallback<ConversationListItem>() {
         override fun areItemsTheSame(
-            oldItem: ConversationResponse,
-            newItem: ConversationResponse,
-        ): Boolean = oldItem.id == newItem.id
+            oldItem: ConversationListItem,
+            newItem: ConversationListItem,
+        ): Boolean = oldItem.conversationId == newItem.conversationId
 
         override fun areContentsTheSame(
-            oldItem: ConversationResponse,
-            newItem: ConversationResponse,
+            oldItem: ConversationListItem,
+            newItem: ConversationListItem,
         ): Boolean = oldItem == newItem
     }
 }

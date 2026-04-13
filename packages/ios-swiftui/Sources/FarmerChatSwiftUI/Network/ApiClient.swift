@@ -86,6 +86,7 @@ internal final class ApiClient {
         retry: Bool = false
     ) async throws -> Res {
         let url = baseURL.appendingPathComponent(path)
+        Self.logger.debug("→ POST \(url.absoluteString)")
         let accessToken = await TokenStore.shared.accessToken
 
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
@@ -130,6 +131,7 @@ internal final class ApiClient {
             components?.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         guard let url = components?.url else { throw NetworkError.invalidURL }
+        Self.logger.debug("→ GET \(url.absoluteString)")
 
         let accessToken = await TokenStore.shared.accessToken
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)

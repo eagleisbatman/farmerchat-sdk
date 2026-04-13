@@ -15,16 +15,15 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.views.R
 import org.digitalgreen.farmerchat.views.databinding.FragmentOnboardingLanguageBinding
+import org.digitalgreen.farmerchat.views.network.SupportedLanguage
 import org.digitalgreen.farmerchat.views.ui.adapters.LanguageAdapter
 import org.digitalgreen.farmerchat.views.viewmodel.ChatViewModel
 
 /**
  * Onboarding step 2: Language selection.
  *
- * Displays available languages in a RecyclerView. The user selects one and taps
- * "Get Started" to proceed to the chat.
- *
- * All user interactions are wrapped in try-catch — the SDK must never crash the host app.
+ * Displays available languages fetched from the server.
+ * The user selects one and taps "Get Started" to proceed to the chat.
  */
 internal class OnboardingLanguageFragment : Fragment() {
 
@@ -37,7 +36,7 @@ internal class OnboardingLanguageFragment : Fragment() {
 
     private val viewModel: ChatViewModel by activityViewModels()
     private lateinit var languageAdapter: LanguageAdapter
-    private var selectedLanguageCode: String = ""
+    private var selectedLanguage: SupportedLanguage? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -56,14 +55,14 @@ internal class OnboardingLanguageFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         try {
-            selectedLanguageCode = viewModel.selectedLanguage.value
+            val initialCode = viewModel.selectedLanguage.value
 
             languageAdapter = LanguageAdapter(
-                selectedCode = selectedLanguageCode,
-                onLanguageSelected = { code ->
+                selectedCode = initialCode,
+                onLanguageSelected = { language ->
                     try {
-                        selectedLanguageCode = code
-                        languageAdapter.setSelectedCode(code)
+                        selectedLanguage = language
+                        languageAdapter.setSelectedCode(language.code)
                         binding.btnGetStarted.isEnabled = true
                     } catch (e: Exception) {
                         Log.w(TAG, "Language selection failed", e)
@@ -76,11 +75,12 @@ internal class OnboardingLanguageFragment : Fragment() {
                 adapter = languageAdapter
             }
 
-            binding.btnGetStarted.isEnabled = selectedLanguageCode.isNotEmpty()
+            binding.btnGetStarted.isEnabled = initialCode.isNotEmpty()
             binding.btnGetStarted.setOnClickListener {
                 try {
-                    if (selectedLanguageCode.isNotEmpty()) {
-                        viewModel.skipOnboarding(selectedLanguageCode)
+                    val lang = selectedLanguage
+                    if (lang != null) {
+                        viewModel.skipOnboarding(lang.code)
                         findNavController().navigate(R.id.action_onboarding_language_to_chat)
                     }
                 } catch (e: Exception) {
@@ -89,6 +89,7 @@ internal class OnboardingLanguageFragment : Fragment() {
             }
 
             observeLanguages()
+            viewModel.loadLanguages()
         } catch (e: Exception) {
             Log.e(TAG, "onViewCreated failed", e)
         }
@@ -97,9 +98,11 @@ internal class OnboardingLanguageFragment : Fragment() {
     private fun observeLanguages() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.availableLanguages.collect { languages ->
+                viewModel.availableLanguageGroups.collect { groups ->
                     try {
-                        languageAdapter.submitList(languages)
+                        val allLanguages = groups.flatMap { it.languages }
+                        languageAdapter.submitList(allLanguages)
+                        binding.progressBar?.visibility = if (allLanguages.isEmpty()) View.VISIBLE else View.GONE
                     } catch (e: Exception) {
                         Log.w(TAG, "Error updating languages", e)
                     }

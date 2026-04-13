@@ -56,7 +56,13 @@ struct HistoryView: View {
             // ── Content ────────────────────────────────────────────────────────
             let conversations = viewModel.conversationList
 
-            if conversations.isEmpty {
+            if viewModel.historyLoading {
+                Spacer()
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: primaryColor))
+                    .scaleEffect(1.4)
+                Spacer()
+            } else if conversations.isEmpty {
                 EmptyHistoryState()
             } else {
                 ScrollView {
@@ -105,7 +111,7 @@ private struct ConversationRow: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.primary)
                         .lineLimit(2)
-                    Text(conversation.createdOn ?? "")
+                    Text(formatRelativeDate(conversation.createdOn))
                         .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
@@ -148,6 +154,40 @@ private struct EmptyHistoryState: View {
         .padding(.horizontal, 32)
         Spacer()
     }
+}
+
+// MARK: - Date formatting
+
+private func formatRelativeDate(_ dateStr: String?) -> String {
+    guard let str = dateStr, !str.isEmpty else { return "" }
+    let formatters: [DateFormatter] = {
+        let patterns = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
+            "yyyy-MM-dd'T'HH:mm:ssZ",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+        ]
+        return patterns.map { p in
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = p
+            return f
+        }
+    }()
+    var date: Date?
+    for f in formatters {
+        if let d = f.date(from: str) { date = d; break }
+    }
+    guard let d = date else { return str }
+    let now = Date()
+    let secs = now.timeIntervalSince(d)
+    if secs < 60 { return "Just now" }
+    if secs < 3600 { return "\(Int(secs / 60))m ago" }
+    if secs < 86400 { return "\(Int(secs / 3600))h ago" }
+    if secs < 172800 { return "Yesterday" }
+    let display = DateFormatter()
+    display.dateFormat = "MMM d"
+    return display.string(from: d)
 }
 
 // MARK: - Topic emoji helper

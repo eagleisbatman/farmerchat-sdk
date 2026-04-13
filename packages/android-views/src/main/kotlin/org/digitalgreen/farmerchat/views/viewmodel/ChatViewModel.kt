@@ -13,18 +13,16 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.views.FarmerChat
 import org.digitalgreen.farmerchat.views.FarmerChatEvent
-import org.digitalgreen.farmerchat.views.network.ConversationResponse
-import org.digitalgreen.farmerchat.views.network.FeedbackRequest
-import org.digitalgreen.farmerchat.views.network.LanguageResponse
-import org.digitalgreen.farmerchat.views.network.Location
-import org.digitalgreen.farmerchat.views.network.QueryRequest
+import org.digitalgreen.farmerchat.views.network.ConversationListItem
+import org.digitalgreen.farmerchat.views.network.FollowUpQuestionOption
 import org.digitalgreen.farmerchat.views.network.StarterQuestionResponse
-import org.json.JSONObject
+import org.digitalgreen.farmerchat.views.network.SupportedLanguageGroup
+import org.digitalgreen.farmerchat.views.network.TokenStore
 import java.util.UUID
 
 /**
- * ViewModel managing chat state.
- * All state is in-memory via StateFlow. No persistence.
+ * ViewModel managing all chat state for the XML Views SDK.
+ * All state is in-memory via StateFlow. No local persistence.
  *
  * Every public method is wrapped in try-catch — the SDK must never crash the host app.
  */
@@ -36,7 +34,6 @@ internal class ChatViewModel : ViewModel() {
 
     // ── Sealed types ─────────────────────────────────────────────────
 
-    /** Represents the current state of a chat operation (send / stream / idle). */
     sealed interface ChatUiState {
         data object Idle : ChatUiState
         data object Sending : ChatUiState
@@ -49,7 +46,6 @@ internal class ChatViewModel : ViewModel() {
         ) : ChatUiState
     }
 
-    /** Top-level screen navigation within the SDK. */
     sealed interface Screen {
         data object Onboarding : Screen
         data object Chat : Screen
@@ -57,9 +53,6 @@ internal class ChatViewModel : ViewModel() {
         data object Profile : Screen
     }
 
-    // ── Data classes ─────────────────────────────────────────────────
-
-    /** A single message displayed in the chat list. */
     data class ChatMessage(
         val id: String,
         val role: String,
@@ -67,14 +60,10 @@ internal class ChatViewModel : ViewModel() {
         val timestamp: Long,
         val inputMethod: String? = null,
         val imageData: String? = null,
-        val followUps: List<String> = emptyList(),
-        val sources: List<Source> = emptyList(),
-        val imageUrl: String? = null,
+        val followUps: List<FollowUpQuestionOption> = emptyList(),
+        val serverMessageId: String? = null,
         val feedbackRating: String? = null,
     )
-
-    /** A source citation attached to an assistant message. */
-    data class Source(val title: String, val url: String? = null)
 
     // ── Mutable backing fields ───────────────────────────────────────
 
@@ -84,8 +73,8 @@ internal class ChatViewModel : ViewModel() {
     private val _isConnected = MutableStateFlow(true)
     private val _starterQuestions = MutableStateFlow<List<StarterQuestionResponse>>(emptyList())
     private val _selectedLanguage = MutableStateFlow("")
-    private val _availableLanguages = MutableStateFlow<List<LanguageResponse>>(emptyList())
-    private val _conversations = MutableStateFlow<List<ConversationResponse>>(emptyList())
+    private val _availableLanguageGroups = MutableStateFlow<List<SupportedLanguageGroup>>(emptyList())
+    private val _conversations = MutableStateFlow<List<ConversationListItem>>(emptyList())
     private val _historyLoading = MutableStateFlow(false)
     private val _historyError = MutableStateFlow<String?>(null)
 
@@ -97,18 +86,16 @@ internal class ChatViewModel : ViewModel() {
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
     val starterQuestions: StateFlow<List<StarterQuestionResponse>> = _starterQuestions.asStateFlow()
     val selectedLanguage: StateFlow<String> = _selectedLanguage.asStateFlow()
-    val availableLanguages: StateFlow<List<LanguageResponse>> = _availableLanguages.asStateFlow()
-    val conversations: StateFlow<List<ConversationResponse>> = _conversations.asStateFlow()
+    val availableLanguageGroups: StateFlow<List<SupportedLanguageGroup>> = _availableLanguageGroups.asStateFlow()
+    val conversations: StateFlow<List<ConversationListItem>> = _conversations.asStateFlow()
     val historyLoading: StateFlow<Boolean> = _historyLoading.asStateFlow()
     val historyError: StateFlow<String?> = _historyError.asStateFlow()
 
     // ── Internal bookkeeping ─────────────────────────────────────────
 
-    /** Active SSE collection job — cancelled by [stopStream]. */
     private var streamJob: Job? = null
-
-    /** Stores the last query so [retryLastQuery] can replay it. */
-    private var lastQuery: Triple<String, String, String?>? = null // text, inputMethod, imageData
+    private var lastQuery: Triple<String, String, String?>? = null
+    private var conversationId: String? = null
 
     private val config get() = FarmerChat.getConfig()
     private val apiClient get() = FarmerChat.apiClient
@@ -118,28 +105,28 @@ internal class ChatViewModel : ViewModel() {
 
     init {
         try {
-            // Seed the default language from config, or fall back to "en"
             _selectedLanguage.value = config.defaultLanguage ?: "en"
-
-            // Wire up connectivity monitor
             FarmerChat.connectivityMonitor?.isConnected
                 ?.onEach { connected -> _isConnected.value = connected }
                 ?.launchIn(viewModelScope)
-
-            // Pre-load languages
-            loadLanguages()
         } catch (e: Exception) {
             Log.w(TAG, "Error during init", e)
         }
     }
 
+    // ── Guest token guard ────────────────────────────────────────────
+
+    private suspend fun ensureGuestTokensSuspend() {
+        if (TokenStore.isInitialized) return
+        try {
+            FarmerChat.guestApiClient?.initializeUser(TokenStore.deviceId)
+        } catch (e: Exception) {
+            Log.e(TAG, "ensureGuestTokensSuspend failed: ${e.message}", e)
+        }
+    }
+
     // ── Public actions ───────────────────────────────────────────────
 
-    /**
-     * Send a text query (optionally with an image).
-     *
-     * State transitions: Idle -> Sending -> Streaming -> Complete (or Error).
-     */
     fun sendQuery(text: String, inputMethod: String = "text", imageData: String? = null) {
         try {
             val client = apiClient ?: run {
@@ -151,167 +138,91 @@ internal class ChatViewModel : ViewModel() {
                 return
             }
 
-            // Save for retry
             lastQuery = Triple(text, inputMethod, imageData)
-
-            // Cancel any in-flight stream
             streamJob?.cancel()
 
-            // Add the user message
             val userMessageId = UUID.randomUUID().toString()
-            val userMessage = ChatMessage(
-                id = userMessageId,
-                role = "user",
-                text = text,
-                timestamp = System.currentTimeMillis(),
-                inputMethod = inputMethod,
-                imageData = imageData,
+            appendMessage(
+                ChatMessage(
+                    id = userMessageId,
+                    role = "user",
+                    text = text,
+                    timestamp = System.currentTimeMillis(),
+                    inputMethod = inputMethod,
+                    imageData = imageData,
+                )
             )
-            appendMessage(userMessage)
-
             _chatState.value = ChatUiState.Sending
 
-            // Emit QuerySent event
             emitEvent(
                 FarmerChatEvent.QuerySent(
                     sessionId = sessionId,
                     queryId = userMessageId,
                     inputMethod = inputMethod,
-                ),
+                )
             )
 
-            val request = QueryRequest(
-                text = text,
-                inputMethod = inputMethod,
-                language = _selectedLanguage.value,
-                imageData = imageData,
-            )
-
-            val assistantMessageId = UUID.randomUUID().toString()
-            val sendStartMs = System.currentTimeMillis()
-
-            streamJob = viewModelScope.launch {
+            viewModelScope.launch {
                 try {
-                    var accumulatedText = ""
-                    var tokenCount = 0
-                    var followUps = emptyList<String>()
-                    var sources = emptyList<Source>()
-                    var imageUrl: String? = null
-                    var assistantMessageAdded = false
+                    ensureGuestTokensSuspend()
 
-                    client.sendQuery(request).collect { sseEvent ->
-                        when (sseEvent.event) {
-                            "token" -> {
-                                val tokenText = parseTokenText(sseEvent.data)
-                                accumulatedText += tokenText
-                                tokenCount++
-
-                                _chatState.value = ChatUiState.Streaming(
-                                    partialText = accumulatedText,
-                                    tokenCount = tokenCount,
-                                )
-
-                                // Upsert the assistant message (growing as tokens arrive)
-                                val assistantMessage = ChatMessage(
-                                    id = assistantMessageId,
-                                    role = "assistant",
-                                    text = accumulatedText,
-                                    timestamp = System.currentTimeMillis(),
-                                    followUps = followUps,
-                                    sources = sources,
-                                    imageUrl = imageUrl,
-                                )
-                                upsertAssistantMessage(assistantMessageId, assistantMessage, assistantMessageAdded)
-                                assistantMessageAdded = true
-                            }
-
-                            "followup" -> {
-                                followUps = parseFollowUps(sseEvent.data)
-                                // Update the existing assistant message with follow-ups
-                                if (assistantMessageAdded) {
-                                    updateAssistantMessage(assistantMessageId) {
-                                        it.copy(followUps = followUps)
-                                    }
-                                }
-                            }
-
-                            "message" -> {
-                                // Non-streaming JSON path: full response at once
-                                val parsed = parseMessageEvent(sseEvent.data)
-                                accumulatedText = parsed.text
-                                followUps = parsed.followUps
-                                sources = parsed.sources
-                                imageUrl = parsed.imageUrl
-
-                                val assistantMessage = ChatMessage(
-                                    id = parsed.id.ifEmpty { assistantMessageId },
-                                    role = "assistant",
-                                    text = accumulatedText,
-                                    timestamp = System.currentTimeMillis(),
-                                    followUps = followUps,
-                                    sources = sources,
-                                    imageUrl = imageUrl,
-                                )
-                                upsertAssistantMessage(assistantMessageId, assistantMessage, assistantMessageAdded)
-                                assistantMessageAdded = true
-                            }
-
-                            "done" -> {
-                                _chatState.value = ChatUiState.Complete
-
-                                // Emit ResponseReceived event
-                                val latencyMs = System.currentTimeMillis() - sendStartMs
-                                emitEvent(
-                                    FarmerChatEvent.ResponseReceived(
-                                        sessionId = sessionId,
-                                        responseId = assistantMessageId,
-                                        latencyMs = latencyMs,
-                                    ),
-                                )
-                            }
-
-                            "error" -> {
-                                val errorInfo = parseErrorEvent(sseEvent.data)
-                                _chatState.value = ChatUiState.Error(
-                                    code = errorInfo.first,
-                                    message = errorInfo.second,
-                                    retryable = true,
-                                )
-                                emitEvent(
-                                    FarmerChatEvent.Error(
-                                        code = errorInfo.first,
-                                        message = errorInfo.second,
-                                    ),
-                                )
-                            }
-                        }
+                    if (conversationId == null) {
+                        val conv = client.createNewConversation(config.contentProviderId)
+                        conversationId = conv.conversationId
                     }
 
-                    // If stream ended without an explicit "done", ensure we mark Complete
-                    if (_chatState.value is ChatUiState.Streaming) {
-                        _chatState.value = ChatUiState.Complete
-                        val latencyMs = System.currentTimeMillis() - sendStartMs
-                        emitEvent(
-                            FarmerChatEvent.ResponseReceived(
-                                sessionId = sessionId,
-                                responseId = assistantMessageId,
-                                latencyMs = latencyMs,
-                            ),
+                    val convId = conversationId!!
+                    val sendStartMs = System.currentTimeMillis()
+                    val clientMessageId = UUID.randomUUID().toString()
+
+                    val response = client.sendTextPrompt(
+                        query = text,
+                        conversationId = convId,
+                        messageId = clientMessageId,
+                        triggeredInputType = inputMethod,
+                    )
+
+                    val answerText = response.response ?: response.message ?: ""
+                    val localId = UUID.randomUUID().toString()
+                    appendMessage(
+                        ChatMessage(
+                            id = localId,
+                            role = "assistant",
+                            text = answerText,
+                            timestamp = System.currentTimeMillis(),
+                            followUps = response.followUpQuestions,
+                            serverMessageId = response.messageId,
                         )
+                    )
+
+                    // Fetch follow-ups from dedicated endpoint if not supplied inline
+                    if (response.followUpQuestions.isEmpty() &&
+                        response.hideFollowUpQuestion != true &&
+                        !response.messageId.isNullOrEmpty()
+                    ) {
+                        fetchAndAppendFollowUps(localId, response.messageId!!)
                     }
+
+                    _chatState.value = ChatUiState.Complete
+                    emitEvent(
+                        FarmerChatEvent.ResponseReceived(
+                            sessionId = sessionId,
+                            responseId = clientMessageId,
+                            latencyMs = System.currentTimeMillis() - sendStartMs,
+                        )
+                    )
                 } catch (e: Exception) {
-                    Log.w(TAG, "Stream collection error", e)
-                    // Keep any partial text visible — move to Error state
+                    Log.w(TAG, "sendQuery coroutine failed", e)
                     _chatState.value = ChatUiState.Error(
-                        code = "stream_error",
-                        message = e.message ?: "Unknown streaming error",
+                        code = "send_error",
+                        message = e.message ?: "Failed to send query",
                         retryable = true,
                     )
                     emitEvent(
                         FarmerChatEvent.Error(
-                            code = "stream_error",
-                            message = e.message ?: "Unknown streaming error",
-                        ),
+                            code = "send_error",
+                            message = e.message ?: "Failed to send query",
+                        )
                     )
                 }
             }
@@ -325,21 +236,14 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Send a follow-up question (user tapped a suggestion chip).
-     */
     fun sendFollowUp(text: String) {
         sendQuery(text = text, inputMethod = "follow_up")
     }
 
-    /**
-     * Cancel the active SSE stream and settle on the partial text.
-     */
     fun stopStream() {
         try {
             streamJob?.cancel()
             streamJob = null
-
             val current = _chatState.value
             if (current is ChatUiState.Streaming || current is ChatUiState.Sending) {
                 _chatState.value = ChatUiState.Complete
@@ -349,13 +253,9 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Replay the last failed query.
-     */
     fun retryLastQuery() {
         try {
             val (text, inputMethod, imageData) = lastQuery ?: return
-            // Reset error state before retry
             _chatState.value = ChatUiState.Idle
             sendQuery(text = text, inputMethod = inputMethod, imageData = imageData)
         } catch (e: Exception) {
@@ -363,22 +263,9 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Submit feedback (thumbs up/down) for an assistant message.
-     */
     fun submitFeedback(messageId: String, rating: String, comment: String? = null) {
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
-                client.submitFeedback(
-                    FeedbackRequest(
-                        responseId = messageId,
-                        rating = rating,
-                        comment = comment,
-                    ),
-                )
-
-                // Optimistically update the local message
                 _messages.update { list ->
                     list.map { msg ->
                         if (msg.id == messageId) msg.copy(feedbackRating = rating) else msg
@@ -386,36 +273,32 @@ internal class ChatViewModel : ViewModel() {
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "submitFeedback failed", e)
-                emitEvent(
-                    FarmerChatEvent.Error(
-                        code = "feedback_error",
-                        message = e.message ?: "Failed to submit feedback",
-                    ),
-                )
             }
         }
     }
 
-    /**
-     * Load conversation history from the server.
-     * Populates [conversations] for the HistoryFragment list.
-     */
     fun loadHistory() {
+        Log.d(TAG, "loadHistory called — apiClient=${if (apiClient != null) "ready" else "NULL"}")
         viewModelScope.launch {
             try {
                 _historyLoading.value = true
                 _historyError.value = null
-                val client = apiClient ?: return@launch
-                val result = client.getHistory()
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadHistory: apiClient is null")
+                    return@launch
+                }
+                ensureGuestTokensSuspend()
+                val result = client.getConversationList()
+                Log.d(TAG, "loadHistory: received ${result.size} conversations")
                 _conversations.value = result
             } catch (e: Exception) {
-                Log.w(TAG, "loadHistory failed", e)
+                Log.e(TAG, "loadHistory failed: ${e.message}", e)
                 _historyError.value = e.message ?: "Failed to load history"
                 emitEvent(
                     FarmerChatEvent.Error(
                         code = "history_error",
                         message = e.message ?: "Failed to load history",
-                    ),
+                    )
                 )
             } finally {
                 _historyLoading.value = false
@@ -423,45 +306,37 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Load a specific conversation's messages into the chat view.
-     */
-    fun loadConversation(conversation: ConversationResponse) {
+    fun loadConversation(conversation: ConversationListItem) {
         try {
-            val chatMessages = conversation.messages.map { msg ->
-                ChatMessage(
-                    id = msg.id,
-                    role = msg.role,
-                    text = msg.text,
-                    timestamp = msg.timestamp,
-                    imageData = msg.imageData,
-                    followUps = msg.followUps,
-                )
-            }
-            _messages.value = trimToCapacity(chatMessages)
+            _messages.value = emptyList()
+            _chatState.value = ChatUiState.Idle
+            conversationId = conversation.conversationId
+            _currentScreen.value = Screen.Chat
         } catch (e: Exception) {
             Log.w(TAG, "loadConversation failed", e)
         }
     }
 
-    /**
-     * Fetch available languages from the server.
-     */
     fun loadLanguages() {
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
-                val languages = client.getLanguages()
-                _availableLanguages.value = languages
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadLanguages: apiClient is null")
+                    return@launch
+                }
+                ensureGuestTokensSuspend()
+                val groups = client.getSupportedLanguages(
+                    countryCode = TokenStore.countryCode,
+                    state = TokenStore.state,
+                )
+                _availableLanguageGroups.value = groups
+                Log.d(TAG, "loadLanguages: ${groups.sumOf { it.languages.size }} languages loaded")
             } catch (e: Exception) {
-                Log.w(TAG, "loadLanguages failed", e)
+                Log.e(TAG, "loadLanguages failed: ${e.message}", e)
             }
         }
     }
 
-    /**
-     * Change the active language and reload starters for the new language.
-     */
     fun setLanguage(code: String) {
         try {
             _selectedLanguage.value = code
@@ -471,46 +346,19 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Load starter questions for the current language.
-     */
     fun loadStarters() {
-        viewModelScope.launch {
-            try {
-                val client = apiClient ?: return@launch
-                val starters = client.getStarters(_selectedLanguage.value)
-                _starterQuestions.value = starters
-            } catch (e: Exception) {
-                Log.w(TAG, "loadStarters failed", e)
-            }
+        // Starters are not available in the real FarmerChat API; no-op.
+    }
+
+    fun completeOnboarding(language: String) {
+        try {
+            setLanguage(language)
+            _currentScreen.value = Screen.Chat
+        } catch (e: Exception) {
+            Log.w(TAG, "completeOnboarding failed", e)
         }
     }
 
-    /**
-     * Submit onboarding data (location + language) and navigate to the chat screen.
-     */
-    fun completeOnboarding(lat: Double, lng: Double, language: String) {
-        viewModelScope.launch {
-            try {
-                val client = apiClient ?: return@launch
-                client.submitOnboarding(Location(lat, lng), language)
-                setLanguage(language)
-                _currentScreen.value = Screen.Chat
-            } catch (e: Exception) {
-                Log.w(TAG, "completeOnboarding failed", e)
-                emitEvent(
-                    FarmerChatEvent.Error(
-                        code = "onboarding_error",
-                        message = e.message ?: "Failed to complete onboarding",
-                    ),
-                )
-            }
-        }
-    }
-
-    /**
-     * Skip onboarding (user chose to skip location) and go directly to chat.
-     */
     fun skipOnboarding(language: String) {
         try {
             setLanguage(language)
@@ -520,9 +368,6 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Navigate to a different screen within the SDK.
-     */
     fun navigateTo(screen: Screen) {
         try {
             _currentScreen.value = screen
@@ -531,137 +376,53 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
-    /**
-     * Clear current messages (e.g., when starting a new conversation).
-     */
     fun clearMessages() {
         try {
             _messages.value = emptyList()
             _chatState.value = ChatUiState.Idle
+            conversationId = null
         } catch (e: Exception) {
             Log.w(TAG, "clearMessages failed", e)
         }
     }
 
+    fun setIsConnected(connected: Boolean) {
+        _isConnected.value = connected
+    }
+
     // ── Private helpers ──────────────────────────────────────────────
 
-    /** Append a message and enforce the memory cap. */
     private fun appendMessage(message: ChatMessage) {
         _messages.update { list ->
-            trimToCapacity(list + message)
+            val cap = config.maxMessagesInMemory
+            val updated = list + message
+            if (updated.size > cap) updated.takeLast(cap) else updated
         }
     }
 
-    /**
-     * Insert or update the assistant message in the list.
-     *
-     * On the first token [alreadyAdded] is false, so the message is appended.
-     * On subsequent tokens the existing entry is replaced in-place.
-     */
-    private fun upsertAssistantMessage(
-        id: String,
-        message: ChatMessage,
-        alreadyAdded: Boolean,
-    ) {
-        _messages.update { list ->
-            if (alreadyAdded) {
-                list.map { if (it.id == id) message else it }
-            } else {
-                trimToCapacity(list + message)
+    private fun fetchAndAppendFollowUps(localMessageId: String, serverMessageId: String) {
+        viewModelScope.launch {
+            try {
+                val client = apiClient ?: return@launch
+                val followUps = client.getFollowUpQuestions(serverMessageId)
+                if (followUps.isNotEmpty()) {
+                    _messages.update { list ->
+                        list.map { msg ->
+                            if (msg.id == localMessageId) msg.copy(followUps = followUps) else msg
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "fetchAndAppendFollowUps failed", e)
             }
         }
     }
 
-    /** Apply a transformation to a specific assistant message. */
-    private fun updateAssistantMessage(id: String, transform: (ChatMessage) -> ChatMessage) {
-        _messages.update { list ->
-            list.map { if (it.id == id) transform(it) else it }
-        }
-    }
-
-    /** Trim a list to [FarmerChatConfig.maxMessagesInMemory], removing the oldest entries. */
-    private fun trimToCapacity(list: List<ChatMessage>): List<ChatMessage> {
-        val cap = config.maxMessagesInMemory
-        return if (list.size > cap) list.takeLast(cap) else list
-    }
-
-    /** Emit a [FarmerChatEvent] to the host app's callback. */
     private fun emitEvent(event: FarmerChatEvent) {
         try {
             FarmerChat.eventCallback?.invoke(event)
         } catch (e: Exception) {
             Log.w(TAG, "Event callback threw", e)
-        }
-    }
-
-    // ── SSE payload parsing ──────────────────────────────────────────
-
-    /** Extract the text content from a "token" SSE data payload. */
-    private fun parseTokenText(data: String): String {
-        return try {
-            val json = JSONObject(data)
-            json.optString("text", data)
-        } catch (_: Exception) {
-            // If it's not valid JSON, treat the raw string as the token text
-            data
-        }
-    }
-
-    /** Parse follow-up suggestions from a "followup" SSE data payload. */
-    private fun parseFollowUps(data: String): List<String> {
-        return try {
-            val json = JSONObject(data)
-            val arr = json.optJSONArray("follow_ups") ?: return emptyList()
-            (0 until arr.length()).map { arr.optString(it, "") }.filter { it.isNotEmpty() }
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    /** Intermediate holder for parsed "message" event data. */
-    private data class ParsedMessage(
-        val id: String,
-        val text: String,
-        val followUps: List<String>,
-        val sources: List<Source>,
-        val imageUrl: String?,
-    )
-
-    /** Parse a full "message" (non-streaming JSON) event. */
-    private fun parseMessageEvent(data: String): ParsedMessage {
-        return try {
-            val json = JSONObject(data)
-            val id = json.optString("id", "")
-            val text = json.optString("text", "")
-            val followUps = json.optJSONArray("follow_ups")?.let { arr ->
-                (0 until arr.length()).map { arr.optString(it, "") }.filter { it.isNotEmpty() }
-            } ?: emptyList()
-            val sources = json.optJSONArray("sources")?.let { arr ->
-                (0 until arr.length()).map { i ->
-                    val srcJson = arr.optJSONObject(i) ?: JSONObject()
-                    Source(
-                        title = srcJson.optString("title", ""),
-                        url = srcJson.optString("url", null),
-                    )
-                }
-            } ?: emptyList()
-            val imageUrl = json.optString("image_url", null)
-
-            ParsedMessage(id, text, followUps, sources, imageUrl)
-        } catch (_: Exception) {
-            ParsedMessage(id = "", text = data, followUps = emptyList(), sources = emptyList(), imageUrl = null)
-        }
-    }
-
-    /** Parse an "error" SSE event and return (code, message). */
-    private fun parseErrorEvent(data: String): Pair<String, String> {
-        return try {
-            val json = JSONObject(data)
-            val code = json.optString("code", json.optInt("code", 0).toString())
-            val message = json.optString("message", "Unknown error")
-            code to message
-        } catch (_: Exception) {
-            "unknown" to data
         }
     }
 }

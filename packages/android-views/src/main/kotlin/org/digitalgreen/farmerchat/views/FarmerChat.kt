@@ -2,9 +2,16 @@ package org.digitalgreen.farmerchat.views
 
 import android.content.Context
 import android.util.Log
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.views.crash.CrashBridge
 import org.digitalgreen.farmerchat.views.network.ApiClient
 import org.digitalgreen.farmerchat.views.network.ConnectivityMonitor
+import org.digitalgreen.farmerchat.views.network.DeviceInfoProvider
+import org.digitalgreen.farmerchat.views.network.GuestApiClient
+import org.digitalgreen.farmerchat.views.network.TokenStore
 
 /**
  * Main entry point for the FarmerChat XML Views SDK.
@@ -16,11 +23,13 @@ object FarmerChat {
     internal const val SDK_VERSION = "0.0.0"
 
     private var config: FarmerChatConfig? = null
-    private var apiKey: String? = null
+    private var sdkApiKey: String? = null
     private var appContext: Context? = null
     @Volatile private var isInitialized = false
     private var sessionId: String? = null
     internal var apiClient: ApiClient? = null
+        private set
+    internal var guestApiClient: GuestApiClient? = null
         private set
     internal var connectivityMonitor: ConnectivityMonitor? = null
         private set
@@ -29,40 +38,60 @@ object FarmerChat {
     internal var eventCallback: ((FarmerChatEvent) -> Unit)? = null
         private set
 
+    private val sdkScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     /**
      * Initialize the SDK. Call once in Application.onCreate().
      *
      * This method is idempotent — calling it more than once is a no-op.
      * All work is wrapped in try-catch so SDK initialization can never crash the host app.
      *
-     * @param context Application context
-     * @param apiKey Partner API key issued by Digital Green
-     * @param config Optional SDK configuration
+     * @param context   Application context
+     * @param sdkApiKey Partner API key (`fc_live_*` or `fc_test_*`)
+     * @param config    Optional SDK configuration
      */
     fun initialize(
         context: Context,
-        apiKey: String,
+        sdkApiKey: String,
         config: FarmerChatConfig = FarmerChatConfig(),
     ) {
-        if (isInitialized) return // Idempotent — fast path without lock
+        if (isInitialized) return
         synchronized(this) {
-            if (isInitialized) return // Double-check under lock
+            if (isInitialized) return
             try {
-                this.appContext = context.applicationContext
-                this.apiKey = apiKey
+                val appCtx = context.applicationContext
+                this.appContext = appCtx
+                this.sdkApiKey = sdkApiKey
                 this.config = config
                 this.sessionId = java.util.UUID.randomUUID().toString()
+
+                val deviceId = DeviceInfoProvider.getStableDeviceId(appCtx)
+                TokenStore.setDeviceId(deviceId)
+                val deviceInfo = DeviceInfoProvider.buildHeader(appCtx)
+
+                this.guestApiClient = GuestApiClient(config.baseUrl)
                 this.apiClient = ApiClient(
-                    baseUrl = config.baseUrl,
-                    apiKey = apiKey,
-                    requestTimeoutMs = config.requestTimeoutMs,
+                    baseUrl     = config.baseUrl,
+                    sdkApiKey   = sdkApiKey,
+                    deviceInfo  = deviceInfo,
+                    timeoutMs   = config.requestTimeoutMs,
                     aiReadTimeoutMs = config.aiReadTimeoutMs,
                 )
-                this.connectivityMonitor = ConnectivityMonitor(context.applicationContext).also { it.start() }
+                this.connectivityMonitor = ConnectivityMonitor(appCtx).also { it.start() }
                 this.crashBridge = CrashBridge().also { it.detect() }
                 this.isInitialized = true
+
+                // Background guest token initialization
+                sdkScope.launch {
+                    try {
+                        if (!TokenStore.isInitialized) {
+                            guestApiClient?.initializeUser(deviceId)
+                        }
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Background guest init failed: ${e.message}")
+                    }
+                }
             } catch (e: Exception) {
-                // SDK init must never crash host app
                 Log.e(TAG, "Initialization failed", e)
             }
         }
