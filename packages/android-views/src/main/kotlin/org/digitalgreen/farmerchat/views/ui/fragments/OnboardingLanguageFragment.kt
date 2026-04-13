@@ -102,7 +102,7 @@ internal class OnboardingLanguageFragment : Fragment() {
                     try {
                         val allLanguages = groups.flatMap { it.languages }
                         languageAdapter.submitList(allLanguages)
-                        binding.progressBar?.visibility = if (allLanguages.isEmpty()) View.VISIBLE else View.GONE
+                        binding.progressBar.visibility = if (allLanguages.isEmpty()) View.VISIBLE else View.GONE
                     } catch (e: Exception) {
                         Log.w(TAG, "Error updating languages", e)
                     }

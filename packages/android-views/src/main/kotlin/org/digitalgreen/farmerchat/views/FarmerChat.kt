@@ -72,7 +72,7 @@ object FarmerChat {
                 this.guestApiClient = GuestApiClient(config.baseUrl)
                 this.apiClient = ApiClient(
                     baseUrl     = config.baseUrl,
-                    sdkApiKey   = sdkApiKey,
+                    sdkApiKey   = apiKey,
                     deviceInfo  = deviceInfo,
                     timeoutMs   = config.requestTimeoutMs,
                     aiReadTimeoutMs = config.aiReadTimeoutMs,
