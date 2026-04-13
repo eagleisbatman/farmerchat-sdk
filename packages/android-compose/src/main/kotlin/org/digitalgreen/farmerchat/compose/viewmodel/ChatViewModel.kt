@@ -84,6 +84,7 @@ internal class ChatViewModel : ViewModel() {
     private val _selectedLanguage = MutableStateFlow("")
     private val _availableLanguageGroups = MutableStateFlow<List<SupportedLanguageGroup>>(emptyList())
     private val _conversationList = MutableStateFlow<List<ConversationListItem>>(emptyList())
+    private val _historyLoading = MutableStateFlow(false)
 
     // ── Exposed state ─────────────────────────────────────────────────────────
 
@@ -94,6 +95,7 @@ internal class ChatViewModel : ViewModel() {
     val selectedLanguage: StateFlow<String> = _selectedLanguage.asStateFlow()
     val availableLanguageGroups: StateFlow<List<SupportedLanguageGroup>> = _availableLanguageGroups.asStateFlow()
     val conversationList: StateFlow<List<ConversationListItem>> = _conversationList.asStateFlow()
+    val historyLoading: StateFlow<Boolean> = _historyLoading.asStateFlow()
 
     // ── Internal bookkeeping ──────────────────────────────────────────────────
 
@@ -416,6 +418,7 @@ internal class ChatViewModel : ViewModel() {
     /** Load the user's conversation list. */
     fun loadConversationList() {
         Log.d(TAG, "loadConversationList called — apiClient=${if (apiClient != null) "ready" else "NULL"}")
+        _historyLoading.value = true
         viewModelScope.launch {
             try {
                 val client = apiClient ?: run {
@@ -428,6 +431,8 @@ internal class ChatViewModel : ViewModel() {
                 _conversationList.value = list
             } catch (e: Exception) {
                 Log.e(TAG, "loadConversationList failed: ${e.message}", e)
+            } finally {
+                _historyLoading.value = false
             }
         }
     }
