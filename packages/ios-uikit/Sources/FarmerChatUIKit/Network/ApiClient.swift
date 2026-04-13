@@ -86,6 +86,9 @@ internal final class ApiClient {
         guard (200...299).contains(http.statusCode) else {
             throw NetworkError.serverError(http.statusCode, String(data: data, encoding: .utf8))
         }
+        if let raw = String(data: data, encoding: .utf8) {
+            Self.logger.debug("← POST \(url.lastPathComponent) raw: \(raw)")
+        }
         return try decoder.decode(Res.self, from: data)
     }
 

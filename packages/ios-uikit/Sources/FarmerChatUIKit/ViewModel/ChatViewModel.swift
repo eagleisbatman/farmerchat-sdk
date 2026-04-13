@@ -126,15 +126,17 @@ internal final class ChatViewModel: ObservableObject {
                     weatherCtaTriggered: weatherCtaTriggered
                 )
 
+                print("[\(Self.tag)] sendTextPrompt response='\(resp.response ?? "<nil>")' message='\(resp.message ?? "<nil>")' messageId='\(resp.messageId ?? "<nil>")'")
                 let responseText = resp.response ?? resp.message ?? ""
-                let followUps    = resp.followUpQuestions ?? []
-                let msgId        = resp.messageId ?? UUID().uuidString
-                let aiMsg = ChatMessage(id: msgId, role: "assistant", text: responseText, followUps: followUps)
+                let inlineFollowUps = resp.followUpQuestions ?? []
+                let aiMsgId = UUID().uuidString
+                let aiMsg = ChatMessage(id: aiMsgId, role: "assistant", text: responseText, followUps: inlineFollowUps,
+                                        hideTtsSpeaker: resp.hideTtsSpeaker ?? false, serverMessageId: resp.messageId)
                 self.appendMessage(aiMsg)
                 self.chatState = .complete
 
-                // Fetch follow-ups if none returned inline
-                if followUps.isEmpty, let msgId = resp.messageId {
+                // Always prefer the dedicated follow-up endpoint; fall back to inline list.
+                if resp.hideFollowUpQuestion != true, let msgId = resp.messageId, !msgId.isEmpty {
                     if let fuResp = try? await client.fetchFollowUpQuestions(messageId: msgId) {
                         let mapped = fuResp.questions?.map {
                             FollowUpQuestionOption(followUpQuestionId: $0.followUpQuestionId,

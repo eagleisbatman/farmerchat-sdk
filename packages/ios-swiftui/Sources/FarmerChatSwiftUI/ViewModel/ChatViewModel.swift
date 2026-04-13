@@ -202,8 +202,6 @@ internal final class ChatViewModel: ObservableObject {
                     ))
                 } else {
                     // Text prompt
-                    let userId = await TokenStore.shared.userId
-                    _ = userId  // userId embedded in token; not sent in text prompt body
                     let resp = try await client.sendTextPrompt(
                         query: text,
                         conversationId: convId,
@@ -211,18 +209,34 @@ internal final class ChatViewModel: ObservableObject {
                         triggeredInputType: inputMethod,
                         weatherCtaTriggered: weatherCtaTriggered
                     )
+                    print("[\(Self.tag)] sendTextPrompt response field='\(resp.response ?? "<nil>")' message='\(resp.message ?? "<nil>")' messageId='\(resp.messageId ?? "<nil>")'")
                     let answerText = resp.response ?? resp.message ?? ""
+                    let inlineFollowUps = resp.followUpQuestions?.map {
+                        FollowUp(id: $0.followUpQuestionId, question: $0.question ?? "", sequence: $0.sequence ?? 0)
+                    } ?? []
+                    let aiMsgId = UUID().uuidString
                     self.appendMessage(ChatMessage(
-                        id: UUID().uuidString,
+                        id: aiMsgId,
                         role: "assistant",
                         text: answerText,
-                        followUps: resp.followUpQuestions?.map {
-                            FollowUp(id: $0.followUpQuestionId, question: $0.question ?? "", sequence: $0.sequence ?? 0)
-                        } ?? [],
+                        followUps: inlineFollowUps,
                         contentProviderLogo: resp.contentProviderLogo,
                         hideTtsSpeaker: resp.hideTtsSpeaker ?? false,
                         serverMessageId: resp.messageId
                     ))
+
+                    // Fetch follow-up questions via dedicated endpoint (preferred source).
+                    // Falls back to inline follow_up_questions already appended above.
+                    if resp.hideFollowUpQuestion != true, let msgId = resp.messageId, !msgId.isEmpty {
+                        if let fuResp = try? await client.fetchFollowUpQuestions(messageId: msgId) {
+                            let fetched = fuResp.questions?.map {
+                                FollowUp(id: $0.followUpQuestionId, question: $0.question, sequence: $0.sequence)
+                            } ?? []
+                            if !fetched.isEmpty, let idx = self.messages.firstIndex(where: { $0.id == aiMsgId }) {
+                                self.messages[idx].followUps = fetched
+                            }
+                        }
+                    }
                 }
 
                 self.chatState = .complete
