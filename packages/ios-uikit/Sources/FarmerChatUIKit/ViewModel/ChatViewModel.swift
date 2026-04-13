@@ -342,9 +342,25 @@ internal final class ChatViewModel: ObservableObject {
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
-                let cc = await TokenStore.shared.countryCode
-                let countryCode = cc.isEmpty ? self.config.countryCode : cc
-                let groups = try await client.getSupportedLanguages(countryCode: countryCode.isEmpty ? nil : countryCode)
+
+                // Priority: FarmerChatConfig.countryCode → TokenStore (IP geo) → Locale (SIM/region) → "IN"
+                let configCC = self.config.countryCode
+                let tokenCC  = await TokenStore.shared.countryCode
+                let localeCC: String = {
+                    if #available(iOS 16, *) {
+                        return Locale.current.region?.identifier.uppercased() ?? ""
+                    } else {
+                        return Locale.current.regionCode?.uppercased() ?? ""
+                    }
+                }()
+                let effectiveCC: String
+                if !configCC.isEmpty    { effectiveCC = configCC }
+                else if !tokenCC.isEmpty  { effectiveCC = tokenCC }
+                else if !localeCC.isEmpty { effectiveCC = localeCC }
+                else { effectiveCC = "IN" }
+
+                print("[\(Self.tag)] loadLanguages: countryCode='\(effectiveCC)'")
+                let groups = try await client.getSupportedLanguages(countryCode: effectiveCC)
                 self.availableLanguages = groups.flatMap { $0.languages }
             } catch {
                 print("[\(Self.tag)] loadLanguages failed: \(error)")

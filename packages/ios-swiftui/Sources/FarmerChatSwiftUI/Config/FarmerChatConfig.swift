@@ -96,6 +96,10 @@ public struct FarmerChatConfig {
     /// Crop chip text on the weather card (e.g. "Rice").
     public var cropName: String?
 
+    /// ISO 3166-1 alpha-2 country code hint (e.g. "IN"). Used as fallback when
+    /// the server's IP-geo response does not include a country code.
+    public var countryCode: String
+
     /// Global event callback for SDK lifecycle events.
     public var onEvent: ((FarmerChatEvent) -> Void)?
 
@@ -107,6 +111,7 @@ public struct FarmerChatConfig {
         crash: CrashConfig? = nil,
         headerTitle: String = "FarmerChat",
         defaultLanguage: String? = nil,
+        countryCode: String = "",
         voiceInputEnabled: Bool = true,
         imageInputEnabled: Bool = true,
         historyEnabled: Bool = true,
@@ -128,6 +133,7 @@ public struct FarmerChatConfig {
         self.crash = crash
         self.headerTitle = headerTitle
         self.defaultLanguage = defaultLanguage
+        self.countryCode = countryCode
         self.voiceInputEnabled = voiceInputEnabled
         self.imageInputEnabled = imageInputEnabled
         self.historyEnabled = historyEnabled
