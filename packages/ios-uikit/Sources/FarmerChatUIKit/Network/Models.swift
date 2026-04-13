@@ -128,11 +128,21 @@ struct SupportedLanguage: Decodable, Equatable {
     let id: Int
     let name: String
     let code: String
+    /// Native/display name. May be absent in API response; falls back to `name`.
     let displayName: String
 
     enum CodingKeys: String, CodingKey {
         case id, name, code
         case displayName = "display_name"
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id          = try c.decode(Int.self,    forKey: .id)
+        name        = try c.decode(String.self, forKey: .name)
+        code        = try c.decode(String.self, forKey: .code)
+        // display_name is optional in the API response; fall back to name
+        displayName = (try? c.decode(String.self, forKey: .displayName)) ?? ""
     }
 }
 
