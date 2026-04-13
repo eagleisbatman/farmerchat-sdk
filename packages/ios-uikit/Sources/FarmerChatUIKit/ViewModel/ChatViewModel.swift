@@ -373,6 +373,22 @@ internal final class ChatViewModel: ObservableObject {
     func setLanguage(code: String) {
         selectedLanguage = code
         SdkPreferences.selectedLanguage = code
+
+        // Sync language preference with the server so AI responses are returned
+        // in the selected language. Look up the integer id from availableLanguages.
+        guard let client = apiClient,
+              let lang = availableLanguages.first(where: { $0.code == code }) else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let userId = await TokenStore.shared.userId
+                try await client.setPreferredLanguage(userId: userId, languageId: String(lang.id))
+                print("[\(Self.tag)] setLanguage: synced languageId=\(lang.id) (\(code)) to server")
+            } catch {
+                print("[\(Self.tag)] setLanguage: server sync failed (local update kept): \(error)")
+            }
+        }
     }
 
     // MARK: - Onboarding
