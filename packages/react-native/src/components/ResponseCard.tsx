@@ -1,19 +1,24 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import {
   View,
   Text,
   Pressable,
   StyleSheet,
   ActivityIndicator,
+  Share,
+  Clipboard,
+  Platform,
 } from 'react-native';
+import { Audio } from 'expo-av';
 import { MarkdownContent } from './MarkdownContent';
 import type { ChatMessage } from '../hooks/useChat';
+import { useChatContext } from '../ChatProvider';
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const PRIMARY_GREEN  = '#2E7D32';
-const BUBBLE_AI_BG   = '#F1F8E9'; // mint green AI bubble
-const AVATAR_BG      = '#C8E6C9'; // default avatar ring
-const AVATAR_LEAF    = '#2E7D32'; // leaf color
+const BUBBLE_AI_BG   = '#F1F8E9';
+const AVATAR_BG      = '#C8E6C9';
+const AVATAR_LEAF    = '#2E7D32';
 const TEXT_PRIMARY   = '#212121';
 const TEXT_SECONDARY = '#757575';
 
@@ -36,14 +41,22 @@ export const ResponseCard = React.memo(function ResponseCard({
     [onFollowUp],
   );
 
+  const handleShare = useCallback(async () => {
+    try {
+      await Share.share({ message: message.text, title: 'FarmerChat Response' });
+    } catch { /* user cancelled */ }
+  }, [message.text]);
+
+  const handleCopy = useCallback(() => {
+    try { Clipboard.setString(message.text); } catch { /* no-op */ }
+  }, [message.text]);
+
   return (
     <View style={styles.container}>
-      {/* Row: avatar + content */}
       <View style={styles.row}>
-        {/* Avatar 32px */}
+        {/* Avatar */}
         <View style={styles.avatarContainer}>
           <View style={styles.avatar}>
-            {/* Leaf shape */}
             <View style={styles.leaf} />
           </View>
         </View>
@@ -55,7 +68,7 @@ export const ResponseCard = React.memo(function ResponseCard({
             <MarkdownContent text={message.text} />
           </View>
 
-          {/* ── Related questions (vertical list with Ask) ──────────────── */}
+          {/* Related questions */}
           {message.followUps && message.followUps.length > 0 && (
             <View style={styles.relatedContainer}>
               <Text style={styles.relatedLabel}>Related questions</Text>
@@ -75,10 +88,35 @@ export const ResponseCard = React.memo(function ResponseCard({
             </View>
           )}
 
-          {/* ── Listen button (TTS pill) ──────────────────────────────────── */}
-          {!message.hideTtsSpeaker && (
-            <ListenButton messageId={message.serverMessageId} text={message.text} />
-          )}
+          {/* Actions row: Listen + Copy + Share */}
+          <View style={styles.actionsRow}>
+            {!message.hideTtsSpeaker && message.serverMessageId ? (
+              <ListenButton
+                messageId={message.serverMessageId}
+                text={message.text}
+              />
+            ) : null}
+
+            {/* Copy */}
+            <Pressable
+              style={styles.iconBtn}
+              onPress={handleCopy}
+              accessibilityRole="button"
+              accessibilityLabel="Copy response"
+            >
+              <Text style={styles.iconBtnText}>⎘</Text>
+            </Pressable>
+
+            {/* Share */}
+            <Pressable
+              style={styles.iconBtn}
+              onPress={handleShare}
+              accessibilityRole="button"
+              accessibilityLabel="Share response"
+            >
+              <Text style={styles.iconBtnText}>↗</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </View>
@@ -89,23 +127,56 @@ export const ResponseCard = React.memo(function ResponseCard({
 
 type ListenState = 'idle' | 'loading' | 'playing';
 
-function ListenButton({ messageId, text }: { messageId?: string; text: string }) {
+function ListenButton({ messageId, text }: { messageId: string; text: string }) {
+  const { synthesiseAudio } = useChatContext();
   const [state, setState] = React.useState<ListenState>('idle');
+  const soundRef = useRef<Audio.Sound | null>(null);
 
-  const handlePress = useCallback(() => {
-    if (state === 'idle') {
-      setState('loading');
-      // TTS call happens via ViewModel — placeholder for now
-      setTimeout(() => setState('idle'), 2000);
-    } else if (state === 'playing') {
+  const stopAudio = useCallback(async () => {
+    try {
+      if (soundRef.current) {
+        await soundRef.current.stopAsync();
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    } catch { /* no-op */ }
+    setState('idle');
+  }, []);
+
+  const handlePress = useCallback(async () => {
+    if (state === 'playing') {
+      await stopAudio();
+      return;
+    }
+    if (state === 'loading') return;
+
+    setState('loading');
+    try {
+      const url = await synthesiseAudio(messageId, text);
+      if (!url) { setState('idle'); return; }
+
+      await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: url },
+        { shouldPlay: true },
+        (status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            void stopAudio();
+          }
+        }
+      );
+      soundRef.current = sound;
+      setState('playing');
+    } catch {
       setState('idle');
     }
-  }, [state]);
+  }, [state, messageId, text, synthesiseAudio, stopAudio]);
 
   return (
     <Pressable
-      style={styles.listenBtn}
+      style={[styles.listenBtn, state === 'loading' && styles.listenBtnDisabled]}
       onPress={handlePress}
+      disabled={state === 'loading'}
       accessibilityRole="button"
       accessibilityLabel={state === 'playing' ? 'Stop audio' : 'Listen'}
     >
@@ -113,8 +184,12 @@ function ListenButton({ messageId, text }: { messageId?: string; text: string })
         <ActivityIndicator size="small" color={PRIMARY_GREEN} style={{ width: 16, height: 16 }} />
       ) : (
         <>
-          <Text style={styles.listenIcon}>{state === 'playing' ? '⏹' : '🔊'}</Text>
-          <Text style={styles.listenText}>{state === 'playing' ? 'Stop' : 'Listen'}</Text>
+          <Text style={styles.listenIcon}>
+            {state === 'playing' ? '⏹' : '🔊'}
+          </Text>
+          <Text style={styles.listenText}>
+            {state === 'playing' ? 'Stop' : 'Listen'}
+          </Text>
         </>
       )}
     </Pressable>
@@ -132,10 +207,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  avatarContainer: {
-    width: 32, height: 32,
-    marginRight: 8, marginTop: 4,
-  },
+  avatarContainer: { width: 32, height: 32, marginRight: 8, marginTop: 4 },
   avatar: {
     width: 32, height: 32, borderRadius: 16,
     backgroundColor: AVATAR_BG,
@@ -158,7 +230,6 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 1,
   },
-  // Related questions
   relatedContainer: {
     marginTop: 8,
     backgroundColor: '#FFFFFF',
@@ -188,7 +259,13 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   askBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
-  // Listen pill
+  // Actions row
+  actionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 8,
+  },
   listenBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -197,10 +274,16 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
-    marginTop: 8,
-    alignSelf: 'flex-start',
     gap: 6,
   },
+  listenBtnDisabled: { opacity: 0.5 },
   listenIcon: { fontSize: 14 },
   listenText: { fontSize: 13, color: PRIMARY_GREEN, fontWeight: '500' },
+  // Icon buttons (Copy / Share)
+  iconBtn: {
+    width: 30, height: 30, borderRadius: 15,
+    backgroundColor: '#EEEEEE',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  iconBtnText: { fontSize: 14, color: TEXT_SECONDARY },
 });

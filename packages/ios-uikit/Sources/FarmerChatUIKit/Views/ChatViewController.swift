@@ -909,6 +909,16 @@ extension ChatViewController: AssistantMessageCellDelegate {
         let message = viewModel.messages[indexPath.row]
         viewModel.submitFeedback(messageId: message.id, rating: rating)
     }
+
+    func assistantMessageCell(_ cell: AssistantMessageCell,
+                               synthesiseAudioFor msgId: String,
+                               text: String,
+                               completion: @escaping (String?) -> Void) {
+        Task {
+            let url = await viewModel.synthesiseAudio(serverMessageId: msgId, text: text)
+            completion(url)
+        }
+    }
 }
 
 // MARK: - UIFont+Traits

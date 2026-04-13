@@ -66,6 +66,7 @@ internal class ChatViewModel : ViewModel() {
         val followUps: List<FollowUpQuestionOption> = emptyList(),
         val serverMessageId: String? = null,
         val feedbackRating: String? = null,
+        val hideTtsSpeaker: Boolean = false,
     )
 
     // ── Mutable backing fields ───────────────────────────────────────
@@ -693,6 +694,23 @@ internal class ChatViewModel : ViewModel() {
             }
         } catch (e: Exception) {
             Log.w(TAG, "fetchFollowUps failed: ${e.message}")
+        }
+    }
+
+    /** Calls the synthesise_audio API and returns the audio URL, or null on failure. */
+    suspend fun synthesiseAudio(serverMessageId: String, text: String): String? {
+        return try {
+            val client = apiClient ?: return null
+            val userId = TokenStore.userId
+            val resp = client.synthesiseAudio(
+                messageId = serverMessageId,
+                text = text,
+                userId = userId,
+            )
+            resp.audio
+        } catch (e: Exception) {
+            Log.w(TAG, "synthesiseAudio failed: ${e.message}")
+            null
         }
     }
 

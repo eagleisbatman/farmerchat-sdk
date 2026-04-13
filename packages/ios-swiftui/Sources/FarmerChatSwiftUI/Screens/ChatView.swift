@@ -255,7 +255,11 @@ private struct MessageList: View {
                                 message: message,
                                 isStreaming: false,
                                 onFollowUpClick: { text in viewModel.sendFollowUp(text: text) },
-                                onFeedback: { _ in }
+                                onFeedback: { _ in },
+                                onSynthesise: { msgId, text in
+                                    await viewModel.synthesiseAudio(
+                                        serverMessageId: msgId, text: text)
+                                }
                             )
                             .id(message.id)
                         }

@@ -1,13 +1,19 @@
 #if canImport(UIKit)
+import AVFoundation
 import UIKit
 
 /// Delegate for assistant message cell actions.
 internal protocol AssistantMessageCellDelegate: AnyObject {
     func assistantMessageCell(_ cell: AssistantMessageCell, didTapFollowUp text: String)
     func assistantMessageCell(_ cell: AssistantMessageCell, didTapFeedback rating: String)
+    /// Called when the Listen button is tapped. Implementor calls synthesiseAudio and returns the URL.
+    func assistantMessageCell(_ cell: AssistantMessageCell,
+                               synthesiseAudioFor msgId: String,
+                               text: String,
+                               completion: @escaping (String?) -> Void)
 }
 
-/// Left-aligned assistant message cell with avatar, markdown, follow-ups, and feedback.
+/// Left-aligned assistant message cell with avatar, markdown, follow-ups, actions and feedback.
 internal final class AssistantMessageCell: UITableViewCell {
 
     static let reuseIdentifier = "AssistantMessageCell"
@@ -17,8 +23,20 @@ internal final class AssistantMessageCell: UITableViewCell {
     private var followUps: [FollowUpQuestionOption] = []
     private var currentFeedbackRating: String?
     private var isStreaming = false
+    private var currentMessageId: String?
+    private var currentText: String = ""
+
+    // Audio playback
+    private var audioPlayer: AVPlayer?
+    private var playerObserver: Any?
+    private var listenState: ListenButtonState = .idle {
+        didSet { updateListenButton() }
+    }
+    enum ListenButtonState { case idle, loading, playing }
 
     // MARK: - Subviews
+
+    private let primaryColor: UIColor = UIColor(hex: "#1B6B3A")
 
     private let avatarView: UIView = {
         let v = UIView()
@@ -70,6 +88,52 @@ internal final class AssistantMessageCell: UITableViewCell {
         return sv
     }()
 
+    // ── Actions row: Listen + Copy ──────────────────────────────────────────────
+
+    private lazy var actionsStack: UIStackView = {
+        let sv = UIStackView()
+        sv.axis = .horizontal
+        sv.spacing = 8
+        sv.alignment = .center
+        sv.translatesAutoresizingMaskIntoConstraints = false
+        return sv
+    }()
+
+    private lazy var listenButton: UIButton = {
+        let btn = UIButton(type: .system)
+        btn.layer.cornerRadius = 12
+        btn.layer.borderWidth = 1
+        btn.layer.borderColor = primaryColor.cgColor
+        btn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
+        btn.addTarget(self, action: #selector(listenTapped), for: .touchUpInside)
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        return btn
+    }()
+
+    private lazy var listenSpinner: UIActivityIndicatorView = {
+        let s = UIActivityIndicatorView(style: .medium)
+        s.color = primaryColor
+        s.hidesWhenStopped = true
+        s.translatesAutoresizingMaskIntoConstraints = false
+        return s
+    }()
+
+    private lazy var copyButton: UIButton = {
+        let btn = UIButton(type: .system)
+        let cfg = UIImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        btn.setImage(UIImage(systemName: "doc.on.doc", withConfiguration: cfg), for: .normal)
+        btn.tintColor = .secondaryLabel
+        btn.backgroundColor = UIColor.systemGray5
+        btn.layer.cornerRadius = 15
+        btn.widthAnchor.constraint(equalToConstant: 30).isActive = true
+        btn.heightAnchor.constraint(equalToConstant: 30).isActive = true
+        btn.addTarget(self, action: #selector(copyTapped), for: .touchUpInside)
+        btn.accessibilityLabel = "Copy response"
+        return btn
+    }()
+
+    // ── Feedback ──────────────────────────────────────────────────────────────
+
     private let feedbackStack: UIStackView = {
         let sv = UIStackView()
         sv.axis = .horizontal
@@ -96,7 +160,6 @@ internal final class AssistantMessageCell: UITableViewCell {
         return btn
     }()
 
-    // Cursor animation
     private var cursorTimer: Timer?
 
     // MARK: - Init
@@ -113,6 +176,7 @@ internal final class AssistantMessageCell: UITableViewCell {
 
     deinit {
         cursorTimer?.invalidate()
+        stopAudio()
     }
 
     // MARK: - Setup
@@ -122,34 +186,35 @@ internal final class AssistantMessageCell: UITableViewCell {
         backgroundColor = .clear
         contentView.backgroundColor = .clear
 
-        // Avatar
         contentView.addSubview(avatarView)
         avatarView.addSubview(avatarLabel)
-
-        // Markdown view
         contentView.addSubview(markdownView)
-
-        // Cursor
         contentView.addSubview(cursorView)
 
-        // Follow-up scroll + stack
         followUpScroll.addSubview(followUpStack)
         contentView.addSubview(followUpScroll)
+
+        // Actions row
+        listenButton.addSubview(listenSpinner)
+        actionsStack.addArrangedSubview(listenButton)
+        actionsStack.addArrangedSubview(copyButton)
+        let actionsSpacer = UIView()
+        actionsSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        actionsStack.addArrangedSubview(actionsSpacer)
+        contentView.addSubview(actionsStack)
 
         // Feedback
         feedbackStack.addArrangedSubview(thumbsUpButton)
         feedbackStack.addArrangedSubview(thumbsDownButton)
-        // Spacer
-        let spacer = UIView()
-        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        feedbackStack.addArrangedSubview(spacer)
+        let fbSpacer = UIView()
+        fbSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        feedbackStack.addArrangedSubview(fbSpacer)
         contentView.addSubview(feedbackStack)
 
         thumbsUpButton.addTarget(self, action: #selector(thumbsUpTapped), for: .touchUpInside)
         thumbsDownButton.addTarget(self, action: #selector(thumbsDownTapped), for: .touchUpInside)
 
         NSLayoutConstraint.activate([
-            // Avatar
             avatarView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             avatarView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 12),
             avatarView.widthAnchor.constraint(equalToConstant: 28),
@@ -158,18 +223,15 @@ internal final class AssistantMessageCell: UITableViewCell {
             avatarLabel.centerXAnchor.constraint(equalTo: avatarView.centerXAnchor),
             avatarLabel.centerYAnchor.constraint(equalTo: avatarView.centerYAnchor),
 
-            // Markdown
             markdownView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 4),
             markdownView.leadingAnchor.constraint(equalTo: avatarView.trailingAnchor, constant: 8),
             markdownView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
 
-            // Cursor
             cursorView.topAnchor.constraint(equalTo: markdownView.bottomAnchor, constant: 2),
             cursorView.leadingAnchor.constraint(equalTo: markdownView.leadingAnchor),
             cursorView.widthAnchor.constraint(equalToConstant: 8),
             cursorView.heightAnchor.constraint(equalToConstant: 16),
 
-            // Follow-up scroll
             followUpScroll.topAnchor.constraint(equalTo: cursorView.bottomAnchor, constant: 4),
             followUpScroll.leadingAnchor.constraint(equalTo: markdownView.leadingAnchor),
             followUpScroll.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
@@ -181,13 +243,22 @@ internal final class AssistantMessageCell: UITableViewCell {
             followUpStack.trailingAnchor.constraint(equalTo: followUpScroll.trailingAnchor),
             followUpStack.heightAnchor.constraint(equalTo: followUpScroll.heightAnchor),
 
-            // Feedback
-            feedbackStack.topAnchor.constraint(equalTo: followUpScroll.bottomAnchor, constant: 4),
+            actionsStack.topAnchor.constraint(equalTo: followUpScroll.bottomAnchor, constant: 6),
+            actionsStack.leadingAnchor.constraint(equalTo: markdownView.leadingAnchor),
+            actionsStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
+            actionsStack.heightAnchor.constraint(equalToConstant: 32),
+
+            listenSpinner.centerXAnchor.constraint(equalTo: listenButton.centerXAnchor),
+            listenSpinner.centerYAnchor.constraint(equalTo: listenButton.centerYAnchor),
+
+            feedbackStack.topAnchor.constraint(equalTo: actionsStack.bottomAnchor, constant: 4),
             feedbackStack.leadingAnchor.constraint(equalTo: markdownView.leadingAnchor),
             feedbackStack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -12),
             feedbackStack.heightAnchor.constraint(equalToConstant: 32),
             feedbackStack.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -4),
         ])
+
+        updateListenButton()
     }
 
     // MARK: - Configure
@@ -196,50 +267,115 @@ internal final class AssistantMessageCell: UITableViewCell {
         self.isStreaming = isStreaming
         self.followUps = message.followUps
         self.currentFeedbackRating = message.feedbackRating
+        self.currentMessageId = message.serverMessageId
+        self.currentText = message.text
 
         markdownView.markdownText = message.text
 
-        // Cursor visibility
         cursorView.isHidden = !isStreaming
-        if isStreaming {
-            startCursorAnimation()
-        } else {
-            stopCursorAnimation()
-        }
+        if isStreaming { startCursorAnimation() } else { stopCursorAnimation() }
 
-        // Follow-ups
         buildFollowUpChips()
         followUpScroll.isHidden = isStreaming || message.followUps.isEmpty
 
-        // Feedback
+        // Actions row
+        let showListen = !isStreaming && !message.hideTtsSpeaker && !(message.serverMessageId ?? "").isEmpty
+        listenButton.isHidden = !showListen
+        actionsStack.isHidden = isStreaming
+
         feedbackStack.isHidden = isStreaming
         updateFeedbackColors()
+
+        // Reset listen state when cell is rebound to a new message
+        if listenState != .idle { stopAudio() }
     }
 
-    // MARK: - Follow-up Chips
+    // MARK: - Listen button states
+
+    private func updateListenButton() {
+        switch listenState {
+        case .idle:
+            listenSpinner.stopAnimating()
+            listenButton.isEnabled = true
+            let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            let img = UIImage(systemName: "speaker.wave.2.fill", withConfiguration: cfg)
+            listenButton.setImage(img, for: .normal)
+            listenButton.setTitle(" Listen", for: .normal)
+            listenButton.tintColor = primaryColor
+            listenButton.setTitleColor(primaryColor, for: .normal)
+        case .loading:
+            listenButton.setImage(nil, for: .normal)
+            listenButton.setTitle("", for: .normal)
+            listenButton.isEnabled = false
+            listenSpinner.startAnimating()
+        case .playing:
+            listenSpinner.stopAnimating()
+            listenButton.isEnabled = true
+            let cfg = UIImage.SymbolConfiguration(pointSize: 12, weight: .medium)
+            let img = UIImage(systemName: "stop.fill", withConfiguration: cfg)
+            listenButton.setImage(img, for: .normal)
+            listenButton.setTitle(" Stop", for: .normal)
+            listenButton.tintColor = primaryColor
+            listenButton.setTitleColor(primaryColor, for: .normal)
+        }
+    }
+
+    // MARK: - Audio
+
+    private func playAudio(urlString: String) {
+        guard let url = URL(string: urlString) else { listenState = .idle; return }
+        stopAudio()
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {}
+        let item = AVPlayerItem(url: url)
+        let player = AVPlayer(playerItem: item)
+        audioPlayer = player
+        player.play()
+        listenState = .playing
+        let obs = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            self?.listenState = .idle
+        }
+        playerObserver = obs
+    }
+
+    private func stopAudio() {
+        audioPlayer?.pause()
+        audioPlayer = nil
+        if let obs = playerObserver {
+            NotificationCenter.default.removeObserver(obs)
+            playerObserver = nil
+        }
+        listenState = .idle
+    }
+
+    // MARK: - Follow-up chips
 
     private func buildFollowUpChips() {
         followUpStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
-        let primaryColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
+        let pColor = UIColor(hex: FarmerChat.getConfig().theme?.primaryColor ?? "#1B6B3A")
         let cornerRadius = FarmerChat.getConfig().theme?.cornerRadius ?? 12
-
         for followUp in followUps {
             let btn = UIButton(type: .system)
             btn.setTitle(followUp.question ?? "", for: .normal)
             btn.titleLabel?.font = .preferredFont(forTextStyle: .caption1)
-            btn.setTitleColor(primaryColor, for: .normal)
+            btn.setTitleColor(pColor, for: .normal)
             btn.layer.cornerRadius = CGFloat(min(cornerRadius, 16))
             btn.layer.borderWidth = 1
-            btn.layer.borderColor = primaryColor.withAlphaComponent(0.3).cgColor
-            btn.backgroundColor = primaryColor.withAlphaComponent(0.08)
+            btn.layer.borderColor = pColor.withAlphaComponent(0.3).cgColor
+            btn.backgroundColor = pColor.withAlphaComponent(0.08)
             btn.contentEdgeInsets = UIEdgeInsets(top: 6, left: 12, bottom: 6, right: 12)
             btn.addTarget(self, action: #selector(followUpTapped(_:)), for: .touchUpInside)
             followUpStack.addArrangedSubview(btn)
         }
     }
 
-    // MARK: - Cursor Animation
+    // MARK: - Cursor animation
 
     private func startCursorAnimation() {
         cursorTimer?.invalidate()
@@ -261,11 +397,44 @@ internal final class AssistantMessageCell: UITableViewCell {
 
     private func updateFeedbackColors() {
         let greenColor = UIColor(hex: "#1B6B3A")
-        thumbsUpButton.tintColor = currentFeedbackRating == "positive" ? greenColor : .secondaryLabel
-        thumbsDownButton.tintColor = currentFeedbackRating == "negative" ? .systemRed : .secondaryLabel
+        thumbsUpButton.tintColor  = currentFeedbackRating == "positive" ? greenColor : .secondaryLabel
+        thumbsDownButton.tintColor = currentFeedbackRating == "negative" ? .systemRed  : .secondaryLabel
     }
 
     // MARK: - Actions
+
+    @objc private func listenTapped() {
+        switch listenState {
+        case .idle:
+            guard let msgId = currentMessageId, !msgId.isEmpty else { return }
+            listenState = .loading
+            delegate?.assistantMessageCell(self, synthesiseAudioFor: msgId, text: currentText) { [weak self] url in
+                DispatchQueue.main.async {
+                    if let url = url, !url.isEmpty {
+                        self?.playAudio(urlString: url)
+                    } else {
+                        self?.listenState = .idle
+                    }
+                }
+            }
+        case .playing:
+            stopAudio()
+        case .loading:
+            break
+        }
+    }
+
+    @objc private func copyTapped() {
+        UIPasteboard.general.string = currentText
+        let cfg = UIImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+        copyButton.setImage(UIImage(systemName: "checkmark", withConfiguration: cfg), for: .normal)
+        copyButton.tintColor = primaryColor
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            let cfgR = UIImage.SymbolConfiguration(pointSize: 13, weight: .regular)
+            self?.copyButton.setImage(UIImage(systemName: "doc.on.doc", withConfiguration: cfgR), for: .normal)
+            self?.copyButton.tintColor = .secondaryLabel
+        }
+    }
 
     @objc private func followUpTapped(_ sender: UIButton) {
         guard let text = sender.title(for: .normal) else { return }
@@ -287,6 +456,7 @@ internal final class AssistantMessageCell: UITableViewCell {
         stopCursorAnimation()
         cursorView.isHidden = true
         followUpStack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        stopAudio()
         delegate = nil
     }
 }
