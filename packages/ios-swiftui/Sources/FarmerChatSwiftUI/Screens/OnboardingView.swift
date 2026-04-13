@@ -49,6 +49,7 @@ struct OnboardingView: View {
     @StateObject private var locationHelper = LocationHelper()
 
     @State private var step: Int = 1
+    @State private var langLoadError: Bool = false
 
     private var themeColor: Color {
         colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32")
@@ -108,7 +109,12 @@ struct OnboardingView: View {
             } else {
                 LanguageStep(
                     viewModel: viewModel,
-                    themeColor: themeColor
+                    themeColor: themeColor,
+                    hasError: langLoadError && viewModel.availableLanguageGroups.isEmpty,
+                    onRetry: {
+                        langLoadError = false
+                        viewModel.loadLanguages()
+                    }
                 )
             }
 
@@ -148,12 +154,15 @@ struct OnboardingView: View {
         }
         .ignoresSafeArea(edges: .top)
         .onAppear {
-            if step == 2 && viewModel.availableLanguageGroups.isEmpty {
+            // Pre-fetch immediately so languages are ready before the user reaches step 2
+            if viewModel.availableLanguageGroups.isEmpty {
                 viewModel.loadLanguages()
             }
         }
         .onChange(of: step) { newStep in
+            // Retry if still empty when user actually reaches step 2
             if newStep == 2 && viewModel.availableLanguageGroups.isEmpty {
+                langLoadError = false
                 viewModel.loadLanguages()
             }
         }
@@ -241,6 +250,8 @@ private struct LocationStep: View {
 private struct LanguageStep: View {
     @ObservedObject var viewModel: ChatViewModel
     let themeColor: Color
+    let hasError: Bool
+    let onRetry: () -> Void
 
     private var languages: [SupportedLanguage] {
         viewModel.availableLanguageGroups.flatMap(\.languages)
@@ -255,7 +266,16 @@ private struct LanguageStep: View {
                 .padding(.horizontal, 24)
                 .padding(.top, 16)
 
-            if languages.isEmpty {
+            if hasError {
+                VStack(spacing: 12) {
+                    Text("Could not load languages")
+                        .foregroundColor(.secondary)
+                    Button("Retry", action: onRetry)
+                        .foregroundColor(themeColor)
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
+            } else if languages.isEmpty {
                 HStack {
                     Spacer()
                     ProgressView()

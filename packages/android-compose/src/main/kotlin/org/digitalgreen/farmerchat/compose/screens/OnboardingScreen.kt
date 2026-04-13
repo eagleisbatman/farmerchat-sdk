@@ -34,6 +34,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -79,6 +80,8 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
 
     var step by remember { mutableStateOf(1) }
     var locationGranted by remember { mutableStateOf(false) }
+    var langLoadError by remember { mutableStateOf(false) }
+    var langLoading by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
 
@@ -104,13 +107,27 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
         }
     }
 
-    // Load languages when entering step 2
-    LaunchedEffect(step) {
-        if (step == 2 && languageGroups.isEmpty()) {
-            try { viewModel.loadLanguages() } catch (e: Exception) {
-                Log.w("FC.Onboarding", "loadLanguages failed", e)
-            }
+    /** Shared fetch helper — sets loading/error flags. */
+    suspend fun fetchLanguages() {
+        if (languages.isNotEmpty()) return
+        langLoading = true
+        langLoadError = false
+        try {
+            viewModel.loadLanguages()
+        } catch (e: Exception) {
+            Log.w("FC.Onboarding", "loadLanguages failed", e)
+            langLoadError = true
+        } finally {
+            langLoading = false
         }
+    }
+
+    // Pre-fetch languages immediately so they are ready when step 2 is shown.
+    LaunchedEffect(Unit) { fetchLanguages() }
+
+    // Retry if still empty when the user actually reaches step 2.
+    LaunchedEffect(step) {
+        if (step == 2) fetchLanguages()
     }
 
     Box(
@@ -162,12 +179,20 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
                 )
             } else {
                 LanguageStep(
-                    languages     = languages,
-                    selectedCode  = selectedLanguage,
+                    languages      = languages,
+                    selectedCode   = selectedLanguage,
+                    isLoading      = langLoading,
+                    hasError       = langLoadError && languages.isEmpty(),
                     onLangSelected = { language ->
                         try { viewModel.setPreferredLanguage(language) } catch (e: Exception) {
                             Log.w("FC.Onboarding", "setPreferredLanguage failed", e)
                         }
+                    },
+                    onRetry = {
+                        langLoadError = false
+                        langLoading = true
+                        try { viewModel.loadLanguages() } catch (_: Exception) {}
+                        langLoading = false
                     },
                 )
             }
@@ -282,7 +307,10 @@ private fun LocationStep(
 private fun LanguageStep(
     languages: List<SupportedLanguage>,
     selectedCode: String,
+    isLoading: Boolean,
+    hasError: Boolean,
     onLangSelected: (SupportedLanguage) -> Unit,
+    onRetry: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -295,7 +323,20 @@ private fun LanguageStep(
 
         Spacer(Modifier.height(12.dp))
 
-        if (languages.isEmpty()) {
+        if (hasError) {
+            Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Could not load languages", color = SdkTextSecondary, fontSize = 14.sp)
+                    Spacer(Modifier.height(12.dp))
+                    TextButton(onClick = onRetry) {
+                        Text("Retry", color = SdkGreen500)
+                    }
+                }
+            }
+            return@Column
+        }
+
+        if (isLoading || languages.isEmpty()) {
             Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = SdkGreen500)
             }
