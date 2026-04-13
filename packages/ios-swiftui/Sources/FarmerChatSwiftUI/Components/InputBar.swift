@@ -8,6 +8,10 @@ struct InputBar: View {
 
     var enabled: Bool = true
     var onSend: (String) -> Void
+    var onSendWithImage: ((String, String) -> Void)? = nil
+    var selectedImageBase64: String? = nil
+    var onMicTap: (() -> Void)? = nil
+    var onCameraTap: (() -> Void)? = nil
     var voiceEnabled: Bool = true
     var cameraEnabled: Bool = true
 
@@ -19,6 +23,7 @@ struct InputBar: View {
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var hasText: Bool { !trimmed.isEmpty }
+    private var canSend: Bool { hasText || selectedImageBase64 != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -28,7 +33,7 @@ struct InputBar: View {
                 // Camera circle button
                 if cameraEnabled {
                     Button {
-                        // TODO: image picker
+                        onCameraTap?()
                     } label: {
                         Image(systemName: "camera.fill")
                             .font(.system(size: 18))
@@ -53,10 +58,14 @@ struct InputBar: View {
                     .disabled(!enabled)
 
                 // Mic → Send (primary green circle)
-                if hasText {
+                if canSend {
                     Button {
-                        guard hasText && enabled else { return }
-                        onSend(trimmed)
+                        guard enabled else { return }
+                        if let b64 = selectedImageBase64 {
+                            onSendWithImage?(trimmed, b64)
+                        } else if hasText {
+                            onSend(trimmed)
+                        }
                         text = ""
                     } label: {
                         Image(systemName: "arrow.up")
@@ -70,7 +79,7 @@ struct InputBar: View {
                     .accessibilityLabel("Send message")
                 } else if voiceEnabled {
                     Button {
-                        // TODO: voice overlay
+                        onMicTap?()
                     } label: {
                         Image(systemName: "mic.fill")
                             .font(.system(size: 18))

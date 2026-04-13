@@ -1,6 +1,10 @@
 package org.digitalgreen.farmerchat.views.ui.fragments
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +12,9 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
@@ -18,14 +25,20 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.digitalgreen.farmerchat.views.FarmerChat
 import org.digitalgreen.farmerchat.views.R
 import org.digitalgreen.farmerchat.views.databinding.FragmentChatBinding
+import org.digitalgreen.farmerchat.views.media.MediaAudioRecorder
+import org.digitalgreen.farmerchat.views.media.uriToBase64Jpeg
 import org.digitalgreen.farmerchat.views.ui.adapters.MessageAdapter
 import org.digitalgreen.farmerchat.views.viewmodel.ChatViewModel
+import java.io.File
 
 /**
  * Main chat fragment displaying messages, input bar, starter questions, and connectivity banner.
@@ -47,6 +60,45 @@ internal class ChatFragment : Fragment() {
 
     private val viewModel: ChatViewModel by activityViewModels()
     private lateinit var messageAdapter: MessageAdapter
+
+    // Audio recording
+    private var audioRecorder: MediaAudioRecorder? = null
+    private var isRecording = false
+    private var cameraPhotoUri: Uri? = null
+    private var selectedImageBase64: String? = null
+
+    // Permission launchers
+    private val micPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) showVoiceBottomSheet() }
+
+    private val camPermLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) showImageSourceSheet() }
+
+    private val galleryLauncher = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            viewLifecycleOwner.lifecycleScope.launch {
+                val b64 = withContext(Dispatchers.IO) { uriToBase64Jpeg(requireContext(), it.toString()) }
+                if (b64 != null) onImageSelected(b64)
+            }
+        }
+    }
+
+    private val takePictureLauncher = registerForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            cameraPhotoUri?.let { uri ->
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val b64 = withContext(Dispatchers.IO) { uriToBase64Jpeg(requireContext(), uri.toString()) }
+                    if (b64 != null) onImageSelected(b64)
+                }
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -155,6 +207,10 @@ internal class ChatFragment : Fragment() {
 
     private fun dispatchSend() {
         try {
+            if (selectedImageBase64 != null) {
+                dispatchSendWithImage()
+                return
+            }
             val text = binding.inputBar.editMessage?.text?.toString()?.trim()
             if (text.isNullOrEmpty()) return
             viewModel.sendQuery(text)
@@ -188,6 +244,16 @@ internal class ChatFragment : Fragment() {
             }
         }
 
+        // Mic button
+        binding.inputBar.btnVoice?.setOnClickListener {
+            try { onMicClicked() } catch (e: Exception) { Log.w(TAG, "Mic click failed", e) }
+        }
+
+        // Camera button
+        binding.inputBar.btnCamera?.setOnClickListener {
+            try { onCameraClicked() } catch (e: Exception) { Log.w(TAG, "Camera click failed", e) }
+        }
+
         val config = FarmerChat.getConfig()
         if (!config.imageInputEnabled) binding.inputBar.btnCameraContainer?.visibility = View.GONE
         if (!config.voiceInputEnabled) binding.inputBar.btnVoiceContainer?.visibility = View.GONE
@@ -196,10 +262,151 @@ internal class ChatFragment : Fragment() {
 
     private fun updateInputBarButtons(hasText: Boolean) {
         try {
-            binding.inputBar.btnSendContainer?.visibility = if (hasText) View.VISIBLE else View.GONE
-            binding.inputBar.btnVoiceContainer?.visibility = if (hasText) View.GONE else View.VISIBLE
+            val showSend = hasText || selectedImageBase64 != null
+            binding.inputBar.btnSendContainer?.visibility = if (showSend) View.VISIBLE else View.GONE
+            binding.inputBar.btnVoiceContainer?.visibility = if (showSend) View.GONE else View.VISIBLE
         } catch (e: Exception) {
             Log.w(TAG, "updateInputBarButtons failed", e)
+        }
+    }
+
+    private fun onMicClicked() {
+        val ctx = context ?: return
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED) {
+            showVoiceBottomSheet()
+        } else {
+            micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    private fun onCameraClicked() {
+        val ctx = context ?: return
+        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            showImageSourceSheet()
+        } else {
+            camPermLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
+    private fun showVoiceBottomSheet() {
+        try {
+            val ctx = context ?: return
+            val dialog = BottomSheetDialog(ctx)
+            val sheetView = layoutInflater.inflate(R.layout.sheet_voice_input, null)
+            dialog.setContentView(sheetView)
+
+            val recorder = MediaAudioRecorder(ctx).also { audioRecorder = it }
+            var sheetState = "idle"
+
+            val tvStatus = sheetView.findViewById<TextView?>(R.id.tvVoiceStatus)
+            val btnMicStart = sheetView.findViewById<View?>(R.id.btnMicStart)
+            val btnStop    = sheetView.findViewById<View?>(R.id.btnStop)
+            val btnCancel  = sheetView.findViewById<View?>(R.id.btnCancelRecording)
+            val progressAudio = sheetView.findViewById<View?>(R.id.progressAudio)
+            val waveformView = sheetView.findViewById<View?>(R.id.waveformContainer)
+
+            btnMicStart?.setOnClickListener {
+                if (recorder.start()) {
+                    sheetState = "recording"
+                    isRecording = true
+                    tvStatus?.setText(R.string.fc_voice_recording)
+                    btnMicStart.visibility = View.GONE
+                    waveformView?.visibility = View.VISIBLE
+                    btnStop?.visibility = View.VISIBLE
+                    btnCancel?.visibility = View.VISIBLE
+                }
+            }
+
+            btnStop?.setOnClickListener {
+                sheetState = "processing"
+                tvStatus?.setText(R.string.fc_voice_processing)
+                waveformView?.visibility = View.GONE
+                btnStop.visibility = View.GONE
+                btnCancel?.visibility = View.GONE
+                progressAudio?.visibility = View.VISIBLE
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val base64 = withContext(Dispatchers.IO) { recorder.stop() }
+                    isRecording = false
+                    dialog.dismiss()
+                    if (base64 != null) {
+                        viewModel.transcribeAndSendAudio(base64, "AMR")
+                    }
+                }
+            }
+
+            btnCancel?.setOnClickListener {
+                recorder.cancel()
+                isRecording = false
+                dialog.dismiss()
+            }
+
+            dialog.setOnDismissListener {
+                if (isRecording) { recorder.cancel(); isRecording = false }
+                audioRecorder = null
+            }
+
+            dialog.show()
+        } catch (e: Exception) {
+            Log.w(TAG, "showVoiceBottomSheet failed", e)
+        }
+    }
+
+    private fun showImageSourceSheet() {
+        try {
+            val ctx = context ?: return
+            val dialog = BottomSheetDialog(ctx)
+            val sheetView = layoutInflater.inflate(R.layout.sheet_image_source, null)
+            dialog.setContentView(sheetView)
+
+            sheetView.findViewById<View?>(R.id.btnTakePhoto)?.setOnClickListener {
+                dialog.dismiss()
+                launchCamera()
+            }
+            sheetView.findViewById<View?>(R.id.btnChooseGallery)?.setOnClickListener {
+                dialog.dismiss()
+                galleryLauncher.launch(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            }
+            sheetView.findViewById<View?>(R.id.btnCancelImageSource)?.setOnClickListener {
+                dialog.dismiss()
+            }
+
+            dialog.show()
+        } catch (e: Exception) {
+            Log.w(TAG, "showImageSourceSheet failed", e)
+        }
+    }
+
+    private fun launchCamera() {
+        try {
+            val ctx = context ?: return
+            val dir = File(ctx.cacheDir, "farmerchat/images").also { it.mkdirs() }
+            val file = File(dir, "photo_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(
+                ctx, "${ctx.packageName}.fc_views_provider", file)
+            cameraPhotoUri = uri
+            takePictureLauncher.launch(uri)
+        } catch (e: Exception) {
+            Log.w(TAG, "launchCamera failed", e)
+        }
+    }
+
+    private fun onImageSelected(base64: String) {
+        selectedImageBase64 = base64
+        updateInputBarButtons(hasText = !binding.inputBar.editMessage?.text.isNullOrBlank())
+    }
+
+    private fun dispatchSendWithImage() {
+        try {
+            val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: ""
+            val img = selectedImageBase64 ?: return
+            viewModel.sendQueryWithImage(text, img)
+            selectedImageBase64 = null
+            binding.inputBar.editMessage?.text?.clear()
+            updateInputBarButtons(hasText = false)
+        } catch (e: Exception) {
+            Log.w(TAG, "dispatchSendWithImage failed", e)
         }
     }
 

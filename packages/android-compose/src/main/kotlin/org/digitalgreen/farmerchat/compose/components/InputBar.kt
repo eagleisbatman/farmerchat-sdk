@@ -56,12 +56,16 @@ import org.digitalgreen.farmerchat.compose.theme.SdkTextMuted
 internal fun InputBar(
     enabled: Boolean = true,
     onSend: (String) -> Unit,
-    onImageSelected: ((String) -> Unit)? = null,
+    onSendWithImage: ((String, String) -> Unit)? = null,
+    selectedImageBase64: String? = null,
+    onMicClick: (() -> Unit)? = null,
+    onCameraClick: (() -> Unit)? = null,
     voiceEnabled: Boolean = true,
     cameraEnabled: Boolean = true,
 ) {
     var text by remember { mutableStateOf("") }
     val hasText = text.isNotBlank()
+    val hasImage = selectedImageBase64 != null
 
     Surface(
         color = SdkDarkSurface,
@@ -103,23 +107,25 @@ internal fun InputBar(
 
             // Primary button group
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (hasText) {
-                    // Send button — 48dp circle #4CAF50, elevation 4dp
+                if (hasText || hasImage) {
+                    // Send button — 48dp circle #4CAF50
                     Box(
                         modifier = Modifier
                             .size(48.dp)
                             .shadow(4.dp, CircleShape)
-                            .background(if (enabled) SdkGreen500 else SdkGreen500.copy(alpha = 0.4f), CircleShape)
-                            .then(
-                                if (enabled && hasText) Modifier else Modifier
-                            ),
+                            .background(if (enabled) SdkGreen500 else SdkGreen500.copy(alpha = 0.4f), CircleShape),
                         contentAlignment = Alignment.Center,
                     ) {
                         IconButton(
                             onClick = {
                                 try {
-                                    if (text.isNotBlank() && enabled) {
-                                        onSend(text.trim())
+                                    if (enabled) {
+                                        val img = selectedImageBase64
+                                        if (img != null) {
+                                            onSendWithImage?.invoke(text.trim(), img)
+                                        } else {
+                                            onSend(text.trim())
+                                        }
                                         text = ""
                                     }
                                 } catch (e: Exception) {
@@ -127,7 +133,7 @@ internal fun InputBar(
                                 }
                             },
                             modifier = Modifier.size(48.dp),
-                            enabled = enabled && hasText,
+                            enabled = enabled,
                         ) {
                             Icon(
                                 Icons.AutoMirrored.Filled.Send,
@@ -148,7 +154,9 @@ internal fun InputBar(
                         ) {
                             IconButton(
                                 onClick = {
-                                    try { /* TODO: image picker */ } catch (_: Exception) {}
+                                    try { onCameraClick?.invoke() } catch (e: Exception) {
+                                        Log.w("FC.InputBar", "Camera click failed", e)
+                                    }
                                 },
                                 modifier = Modifier.size(40.dp),
                                 enabled = enabled,
@@ -174,7 +182,9 @@ internal fun InputBar(
                         ) {
                             IconButton(
                                 onClick = {
-                                    try { /* TODO: voice overlay */ } catch (_: Exception) {}
+                                    try { onMicClick?.invoke() } catch (e: Exception) {
+                                        Log.w("FC.InputBar", "Mic click failed", e)
+                                    }
                                 },
                                 modifier = Modifier.size(48.dp),
                                 enabled = enabled,

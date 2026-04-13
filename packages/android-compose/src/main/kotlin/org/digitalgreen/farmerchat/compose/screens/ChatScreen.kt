@@ -1,6 +1,12 @@
 package org.digitalgreen.farmerchat.compose.screens
 
+import android.Manifest
+import android.content.Context
+import android.content.pm.PackageManager
+import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -56,10 +62,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import org.digitalgreen.farmerchat.compose.FarmerChat
 import org.digitalgreen.farmerchat.compose.components.ConnectivityBanner
+import org.digitalgreen.farmerchat.compose.components.ImageSourcePickerSheet
 import org.digitalgreen.farmerchat.compose.components.InputBar
 import org.digitalgreen.farmerchat.compose.components.ResponseCard
+import org.digitalgreen.farmerchat.compose.components.VoiceInputSheet
+import org.digitalgreen.farmerchat.compose.media.uriToBase64Jpeg
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
 import org.digitalgreen.farmerchat.compose.theme.SdkAiBubble
 import org.digitalgreen.farmerchat.compose.theme.SdkDarkBg
 import org.digitalgreen.farmerchat.compose.theme.SdkError
@@ -84,6 +103,81 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
     val chatState by viewModel.chatState.collectAsStateWithLifecycle()
     val isConnected by viewModel.isConnected.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val context = LocalContext.current
+
+    // Voice / image sheet visibility
+    var showVoiceSheet by remember { mutableStateOf(false) }
+    var showImageSheet by remember { mutableStateOf(false) }
+    var selectedImageBase64 by remember { mutableStateOf<String?>(null) }
+
+    // Temp URI for camera photo
+    var cameraPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Permission launchers
+    val micPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) showVoiceSheet = true }
+
+    val camPermLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted -> if (granted) showImageSheet = true }
+
+    // Gallery picker
+    val galleryLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        uri?.let {
+            CoroutineScope(Dispatchers.IO).launch {
+                val b64 = uriToBase64Jpeg(context, it.toString())
+                if (b64 != null) selectedImageBase64 = b64
+            }
+        }
+    }
+
+    // Camera capture
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            cameraPhotoUri?.let { uri ->
+                CoroutineScope(Dispatchers.IO).launch {
+                    val b64 = uriToBase64Jpeg(context, uri.toString())
+                    if (b64 != null) selectedImageBase64 = b64
+                }
+            }
+        }
+    }
+
+    fun launchCamera() {
+        try {
+            val dir = File(context.cacheDir, "farmerchat/images").also { it.mkdirs() }
+            val file = File(dir, "photo_${System.currentTimeMillis()}.jpg")
+            val uri = FileProvider.getUriForFile(
+                context, "${context.packageName}.fc_compose_provider", file)
+            cameraPhotoUri = uri
+            takePictureLauncher.launch(uri)
+        } catch (e: Exception) {
+            Log.w("FC.ChatScreen", "Camera launch failed", e)
+        }
+    }
+
+    fun onMicClick() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO)
+            == PackageManager.PERMISSION_GRANTED) {
+            showVoiceSheet = true
+        } else {
+            micPermLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun onCameraClick() {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            showImageSheet = true
+        } else {
+            camPermLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     LaunchedEffect(messages.size) {
         try {
@@ -115,7 +209,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
             if (!isConnected) ConnectivityBanner()
 
             Box(modifier = Modifier.weight(1f)) {
-                if (messages.isEmpty()) {
+                if (messages.isEmpty() && selectedImageBase64 == null) {
                     EmptyState()
                 } else {
                     LazyColumn(
@@ -157,14 +251,47 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
             }
 
             InputBar(
-                enabled       = chatState !is ChatViewModel.ChatUiState.Sending && isConnected,
-                onSend        = { text ->
+                enabled              = chatState !is ChatViewModel.ChatUiState.Sending && isConnected,
+                onSend               = { text ->
                     try { viewModel.sendQuery(text) } catch (_: Exception) {}
                 },
-                voiceEnabled  = FarmerChat.getConfig().voiceInputEnabled,
-                cameraEnabled = FarmerChat.getConfig().imageInputEnabled,
+                onSendWithImage      = { text, b64 ->
+                    try {
+                        viewModel.sendQueryWithImage(text, b64)
+                        selectedImageBase64 = null
+                    } catch (_: Exception) {}
+                },
+                selectedImageBase64  = selectedImageBase64,
+                onMicClick           = { onMicClick() },
+                onCameraClick        = { onCameraClick() },
+                voiceEnabled         = FarmerChat.getConfig().voiceInputEnabled,
+                cameraEnabled        = FarmerChat.getConfig().imageInputEnabled,
             )
         }
+    }
+
+    // Voice input sheet
+    if (showVoiceSheet) {
+        VoiceInputSheet(
+            onDismiss = { showVoiceSheet = false },
+            onAudioCaptured = { base64, format ->
+                showVoiceSheet = false
+                try { viewModel.transcribeAndSendAudio(base64, format) } catch (_: Exception) {}
+            },
+        )
+    }
+
+    // Image source picker sheet
+    if (showImageSheet) {
+        ImageSourcePickerSheet(
+            onDismiss = { showImageSheet = false },
+            onCamera  = { launchCamera() },
+            onGallery = {
+                galleryLauncher.launch(
+                    ActivityResultContracts.PickVisualMedia.ImageOnly
+                )
+            },
+        )
     }
 }
 

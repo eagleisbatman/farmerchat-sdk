@@ -484,7 +484,105 @@ internal class ChatViewModel : ViewModel() {
     }
 
     /**
-     * Transcribe audio (STT).
+     * Full voice input flow:
+     * 1. Appends a "🎤 …" user bubble + loading placeholder
+     * 2. Ensures conversation exists
+     * 3. Calls transcribe_audio/ to get transcript
+     * 4. Updates user bubble with real text
+     * 5. Calls get_answer_for_text_query/ (triggered_input_type = audio)
+     */
+    fun transcribeAndSendAudio(base64Audio: String, audioFormat: String = "AMR") {
+        val client = apiClient ?: run {
+            _chatState.value = ChatUiState.Error("sdk_not_initialized", "SDK not initialized", false)
+            return
+        }
+        val audioMsgId = UUID.randomUUID().toString()
+        appendMessage(ChatMessage(
+            id = audioMsgId, role = "user", text = "🎤 …",
+            timestamp = System.currentTimeMillis(), inputMethod = "audio",
+        ))
+        _chatState.value = ChatUiState.Sending
+        viewModelScope.launch {
+            try {
+                ensureGuestTokensSuspend()
+                if (conversationId == null) {
+                    val conv = client.newConversation(
+                        userId = TokenStore.userId,
+                        contentProviderId = config.contentProviderId,
+                    )
+                    conversationId = conv.conversationId
+                }
+                val convId = conversationId!!
+                // Transcribe
+                val transcribeResp = client.transcribeAudio(
+                    conversationId = convId,
+                    base64Audio = base64Audio,
+                    messageReferenceId = UUID.randomUUID().toString(),
+                    inputAudioEncodingFormat = audioFormat,
+                )
+                val transcript = if (!transcribeResp.error && transcribeResp.heardInputQuery.isNotBlank())
+                    transcribeResp.heardInputQuery
+                else {
+                    // Transcription failed — update bubble to error
+                    updateMessageText(audioMsgId, "⚠️ Could not understand audio")
+                    removePendingLoading()
+                    _chatState.value = ChatUiState.Idle
+                    return@launch
+                }
+                // Update user bubble with real transcript
+                updateMessageText(audioMsgId, transcript)
+                // Send text query with audio trigger
+                val clientMessageId = UUID.randomUUID().toString()
+                val response = client.sendTextPrompt(
+                    query = transcript,
+                    conversationId = convId,
+                    messageId = clientMessageId,
+                    triggeredInputType = "audio",
+                    transcriptionId = transcribeResp.transcriptionId ?: "",
+                )
+                val localId = UUID.randomUUID().toString()
+                val answerText = response.response ?: response.message ?: ""
+                val inlineFollowUps = response.followUpQuestions?.map { fq ->
+                    FollowUp(id = fq.followUpQuestionId, question = fq.question ?: "", sequence = fq.sequence)
+                } ?: emptyList()
+                appendMessage(ChatMessage(
+                    id = localId, role = "assistant", text = answerText,
+                    timestamp = System.currentTimeMillis(),
+                    followUps = inlineFollowUps,
+                    contentProviderLogo = response.contentProviderLogo,
+                    hideTtsSpeaker = response.hideTtsSpeaker ?: false,
+                    serverMessageId = response.messageId,
+                ))
+                if (inlineFollowUps.isEmpty() &&
+                    response.hideFollowUpQuestion != true &&
+                    !response.messageId.isNullOrEmpty()
+                ) {
+                    fetchAndAppendFollowUps(localId, response.messageId!!)
+                }
+                _chatState.value = ChatUiState.Complete
+            } catch (e: Exception) {
+                Log.w(TAG, "transcribeAndSendAudio failed: ${e.message}")
+                removePendingLoading()
+                _chatState.value = ChatUiState.Error("audio_error", e.message ?: "Audio error", true)
+            }
+        }
+    }
+
+    /** Send an image with optional text caption (calls image_analysis/ endpoint). */
+    fun sendQueryWithImage(text: String, base64Image: String) {
+        sendQuery(text = text.ifBlank { "Analyze this image" }, inputMethod = "image", imageData = base64Image)
+    }
+
+    private fun updateMessageText(id: String, newText: String) {
+        _messages.update { msgs -> msgs.map { if (it.id == id) it.copy(text = newText) else it } }
+    }
+
+    private fun removePendingLoading() {
+        _messages.update { msgs -> msgs.filter { it.role != "loading" } }
+    }
+
+    /**
+     * Transcribe audio (STT) — low-level, used when conversation already exists.
      * Returns the transcribed text or null on failure.
      */
     suspend fun transcribeAudio(

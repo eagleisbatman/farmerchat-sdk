@@ -58,6 +58,8 @@ export interface UseChatReturn {
   loadLanguages: () => Promise<void>;
   synthesiseAudio: (serverMessageId: string, text: string) => Promise<string | null>;
   transcribeAudio: (base64Audio: string, format?: string) => Promise<string | null>;
+  transcribeAndSendAudio: (base64Audio: string, format?: string) => Promise<void>;
+  sendQueryWithImage: (caption: string, base64Image: string) => Promise<void>;
   setLanguage: (code: string) => void;
   navigateTo: (screen: Screen) => void;
   setIsConnected: (connected: boolean) => void;
@@ -378,6 +380,48 @@ export function useChat(): UseChatReturn {
   }, [ensureTokens]);
 
   // ---------------------------------------------------------------------------
+  // High-level voice + image flows
+  // ---------------------------------------------------------------------------
+
+  const transcribeAndSendAudio = useCallback(async (base64Audio: string, format = 'LINEAR16'): Promise<void> => {
+    const client = apiClientRef.current;
+    if (!client) return;
+    const audioMsgId = generateId();
+    setMessages(prev => [...prev, {
+      id: audioMsgId, role: 'user', text: '🎤 …', timestamp: Date.now(), inputMethod: 'audio',
+    }]);
+    setChatState('sending');
+    try {
+      await ensureTokens();
+      const convId = await ensureConversation();
+      const transcribeResp = await client.transcribeAudio({
+        conversation_id: convId,
+        query: base64Audio,
+        message_reference_id: generateId(),
+        input_audio_encoding_format: format as never,
+        triggered_input_type: 'audio',
+        editable_transcription: true,
+      });
+      const transcript = transcribeResp.error ? null : (transcribeResp.heard_input_query ?? null);
+      if (!transcript) {
+        setMessages(prev => prev.map(m => m.id === audioMsgId
+          ? { ...m, text: '⚠️ Could not understand audio' } : m));
+        setChatState('idle');
+        return;
+      }
+      setMessages(prev => prev.map(m => m.id === audioMsgId ? { ...m, text: transcript } : m));
+      // Send the transcribed text via the standard text query flow
+      await sendQuery(transcript, 'audio');
+    } catch {
+      setChatState('idle');
+    }
+  }, [ensureTokens, ensureConversation, sendQuery, setMessages, setChatState]);
+
+  const sendQueryWithImage = useCallback(async (caption: string, base64Image: string): Promise<void> => {
+    await sendQuery(caption || 'Analyze this image', 'image', base64Image);
+  }, [sendQuery]);
+
+  // ---------------------------------------------------------------------------
   // Misc
   // ---------------------------------------------------------------------------
 
@@ -431,6 +475,8 @@ export function useChat(): UseChatReturn {
     loadLanguages,
     synthesiseAudio,
     transcribeAudio,
+    transcribeAndSendAudio,
+    sendQueryWithImage,
     setLanguage,
     navigateTo,
     setIsConnected,

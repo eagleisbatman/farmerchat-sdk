@@ -357,6 +357,60 @@ internal class ApiClient(
         }
     }
 
+    // ── Public API — STT (transcribe audio) ──────────────────────────────────
+
+    suspend fun transcribeAudio(
+        conversationId: String,
+        base64Audio: String,
+        messageReferenceId: String,
+        inputAudioEncodingFormat: String = "AMR",
+    ): GetVoiceResponse {
+        return try {
+            val body = JSONObject().apply {
+                put("conversation_id", conversationId)
+                put("query", base64Audio)
+                put("message_reference_id", messageReferenceId)
+                put("input_audio_encoding_format", inputAudioEncodingFormat)
+                put("triggered_input_type", "audio")
+                put("editable_transcription", "True")
+            }
+            val text = postJson(EP_TRANSCRIBE_AUDIO, body, readTimeout = aiReadTimeoutMs)
+            GetVoiceResponse.fromJson(JSONObject(text))
+        } catch (e: Exception) {
+            Log.w(TAG, "transcribeAudio failed: ${e.message}")
+            throw e
+        }
+    }
+
+    // ── Public API — Image analysis ───────────────────────────────────────────
+
+    suspend fun imageAnalysis(
+        conversationId: String,
+        base64Image: String,
+        imageName: String,
+        query: String? = null,
+        latitude: String? = null,
+        longitude: String? = null,
+    ): ImageAnalysisResponse {
+        return try {
+            val body = JSONObject().apply {
+                put("conversation_id", conversationId)
+                put("image", base64Image)
+                put("triggered_input_type", "image")
+                put("image_name", imageName)
+                put("retry", false)
+                if (query != null) put("query", query)
+                if (latitude != null) put("latitude", latitude)
+                if (longitude != null) put("longitude", longitude)
+            }
+            val text = postJson(EP_IMAGE_ANALYSIS, body, readTimeout = aiReadTimeoutMs)
+            ImageAnalysisResponse.fromJson(JSONObject(text))
+        } catch (e: Exception) {
+            Log.w(TAG, "imageAnalysis failed: ${e.message}")
+            throw e
+        }
+    }
+
     // ── Public API — TTS ──────────────────────────────────────────────────────
 
     suspend fun synthesiseAudio(messageId: String, text: String): SynthesiseAudioResponse {

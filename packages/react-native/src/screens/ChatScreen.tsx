@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useCallback } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -25,6 +25,8 @@ import { useConnectivity } from '../hooks/useConnectivity';
 import { InputBar } from '../components/InputBar';
 import { ResponseCard } from '../components/ResponseCard';
 import { ConnectivityBanner } from '../components/ConnectivityBanner';
+import { VoiceInputOverlay } from '../components/VoiceInputOverlay';
+import { PhotoInputSheet } from '../components/PhotoInputSheet';
 import type { ChatMessage } from '../hooks/useChat';
 
 // ── Dark palette (matches Compose + Views dark theme) ─────────────────────────
@@ -182,9 +184,14 @@ export function ChatScreen() {
   const {
     chatState, messages, isConnected, errorMessage,
     sendQuery, sendFollowUp, retryLastQuery, navigateTo, setIsConnected,
+    transcribeAndSendAudio, sendQueryWithImage,
   } = useChat();
   const { isConnected: netConnected } = useConnectivity();
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
+
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
+  const [showPhotoSheet, setShowPhotoSheet] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<{ uri: string; base64?: string | null } | null>(null);
 
   const primaryColor = config.theme?.primaryColor ?? PRIMARY_GREEN;
 
@@ -201,12 +208,26 @@ export function ChatScreen() {
     }
   }, [messages.length, chatState]);
 
-  const handleSend = useCallback(async (text: string, imageData?: string) => {
-    try { await sendQuery(text, 'text', imageData); } catch { /* handled in hook */ }
-  }, [sendQuery]);
+  const handleSend = useCallback(async (text: string) => {
+    try {
+      if (selectedImage?.base64) {
+        await sendQueryWithImage(text, selectedImage.base64);
+        setSelectedImage(null);
+      } else {
+        await sendQuery(text, 'text');
+      }
+    } catch { /* handled in hook */ }
+  }, [sendQuery, sendQueryWithImage, selectedImage]);
 
-  const lastIdRef = useRef<string | undefined>();
-  lastIdRef.current = messages[messages.length - 1]?.id;
+  const handleVoiceConfirm = useCallback(async (uri: string, base64: string) => {
+    setShowVoiceOverlay(false);
+    try { await transcribeAndSendAudio(base64, 'LINEAR16'); } catch { /* handled in hook */ }
+  }, [transcribeAndSendAudio]);
+
+  const handlePhotoSelected = useCallback((result: { uri: string; base64?: string | null }) => {
+    setShowPhotoSheet(false);
+    setSelectedImage(result);
+  }, []);
 
   const renderItem = useCallback(({ item }: { item: ChatMessage }) => {
     if (item.role === 'user') return <UserBubble message={item} />;
@@ -236,7 +257,7 @@ export function ChatScreen() {
       {!isConnected && <ConnectivityBanner isConnected={isConnected} />}
 
       <View style={styles.chatBody}>
-        {messages.length === 0 ? (
+        {messages.length === 0 && !selectedImage ? (
           <EmptyState />
         ) : (
           <FlatList<ChatMessage>
@@ -263,6 +284,22 @@ export function ChatScreen() {
         isDisabled={!isConnected || chatState === 'sending'}
         voiceEnabled={config.voiceInputEnabled ?? false}
         imageEnabled={config.imageInputEnabled ?? false}
+        selectedImageUri={selectedImage?.uri}
+        onClearImage={() => setSelectedImage(null)}
+        onVoicePress={() => setShowVoiceOverlay(true)}
+        onCameraPress={() => setShowPhotoSheet(true)}
+      />
+
+      <VoiceInputOverlay
+        visible={showVoiceOverlay}
+        onConfirm={handleVoiceConfirm}
+        onCancel={() => setShowVoiceOverlay(false)}
+      />
+
+      <PhotoInputSheet
+        visible={showPhotoSheet}
+        onImageSelected={handlePhotoSelected}
+        onCancel={() => setShowPhotoSheet(false)}
       />
     </KeyboardAvoidingView>
   );

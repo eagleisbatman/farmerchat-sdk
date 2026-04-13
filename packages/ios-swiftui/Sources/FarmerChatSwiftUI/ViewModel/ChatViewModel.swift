@@ -318,6 +318,50 @@ internal final class ChatViewModel: ObservableObject {
         }
     }
 
+    /// Full voice flow: transcribe audio bytes → send as text query.
+    func transcribeAndSendAudio(audioData: Data) {
+        guard let client = apiClient else { return }
+        let audioMsgId = UUID().uuidString
+        appendMessage(ChatMessage(id: audioMsgId, role: "user", text: "🎤 …", inputMethod: "audio"))
+        chatState = .sending
+        Task { [weak self] in
+            guard let self else { return }
+            await self.ensureGuestTokens()
+            if self.conversationId == nil {
+                let userId = await TokenStore.shared.userId
+                if let conv = try? await client.createNewConversation(
+                    userId: userId, contentProviderId: self.config.contentProviderId) {
+                    self.conversationId = conv.conversationId
+                }
+            }
+            let userId = await TokenStore.shared.userId
+            let request = TranscribeAudioRequest(
+                audioData: audioData,
+                userId: userId,
+                conversationId: self.conversationId,
+                language: self.selectedLanguage.isEmpty ? nil : self.selectedLanguage
+            )
+            let transcript = await self.transcribeAudio(request)
+            guard let transcript, !transcript.trimmingCharacters(in: .whitespaces).isEmpty else {
+                self.messages = self.messages.map {
+                    $0.id == audioMsgId ? ChatMessage(id: $0.id, role: "user", text: "⚠️ Could not understand audio", inputMethod: "audio") : $0
+                }
+                self.chatState = .idle
+                return
+            }
+            self.messages = self.messages.map {
+                $0.id == audioMsgId ? ChatMessage(id: $0.id, role: "user", text: transcript, inputMethod: "audio") : $0
+            }
+            self.sendQuery(text: transcript, inputMethod: "audio")
+        }
+    }
+
+    /// Send a base64 image with optional caption through image_analysis/ endpoint.
+    func sendQueryWithImage(caption: String, base64Image: String) {
+        sendQuery(text: caption.isEmpty ? "Analyze this image" : caption,
+                  inputMethod: "image", imageData: base64Image)
+    }
+
     // MARK: - Navigation
 
     func navigateTo(_ screen: Screen) {

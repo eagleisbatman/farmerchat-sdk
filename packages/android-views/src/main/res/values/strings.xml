@@ -57,4 +57,20 @@
     <!-- Input bar -->
     <string name="fc_message_hint_crops">Ask about your crops…</string>
 
+    <!-- Voice input sheet -->
+    <string name="fc_voice_idle">Tap mic to start recording</string>
+    <string name="fc_voice_recording">Recording… tap stop when done</string>
+    <string name="fc_voice_processing">Processing audio…</string>
+    <string name="fc_start_recording">Start recording</string>
+    <string name="fc_stop_recording">Stop recording</string>
+
+    <!-- Image source sheet -->
+    <string name="fc_add_image">Add Image</string>
+    <string name="fc_image_subtitle">Photograph your crop for analysis</string>
+    <string name="fc_take_photo">Take Photo</string>
+    <string name="fc_take_photo_desc">Use your camera to capture the crop</string>
+    <string name="fc_choose_gallery">Choose from Gallery</string>
+    <string name="fc_choose_gallery_desc">Select an existing photo</string>
+    <string name="fc_cancel">Cancel</string>
+
 </resources>

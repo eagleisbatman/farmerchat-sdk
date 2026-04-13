@@ -17,13 +17,15 @@ const TEXT_SECONDARY = '#757575';
 const DIVIDER_COLOR  = '#E0E0E0';
 
 interface InputBarProps {
-  onSend: (text: string, imageData?: string) => void;
+  onSend: (text: string) => void;
   onVoicePress?: () => void;
   onCameraPress?: () => void;
   voiceEnabled?: boolean;
   imageEnabled?: boolean;
   isDisabled?: boolean;
   placeholder?: string;
+  selectedImageUri?: string;
+  onClearImage?: () => void;
 }
 
 /**
@@ -41,22 +43,23 @@ export const InputBar = React.memo(function InputBar({
   imageEnabled = false,
   isDisabled = false,
   placeholder = 'Ask about your crops…',
+  selectedImageUri,
+  onClearImage,
 }: InputBarProps) {
   const [text, setText] = useState('');
-  const [selectedImage, setSelectedImage] = useState<string | null>(null);
 
   const hasText = text.trim().length > 0;
-  const canSend = (hasText || !!selectedImage) && !isDisabled;
+  const hasImage = !!selectedImageUri;
+  const canSend = (hasText || hasImage) && !isDisabled;
 
   const handleSend = useCallback(() => {
     try {
       const trimmed = text.trim();
-      if (!trimmed && !selectedImage) return;
-      onSend(trimmed, selectedImage ?? undefined);
+      if (!trimmed && !hasImage) return;
+      onSend(trimmed);
       setText('');
-      setSelectedImage(null);
     } catch { /* no-op */ }
-  }, [text, selectedImage, onSend]);
+  }, [text, hasImage, onSend]);
 
   const handleVoice = useCallback(() => {
     try { onVoicePress?.(); } catch { /* no-op */ }
@@ -69,11 +72,11 @@ export const InputBar = React.memo(function InputBar({
   return (
     <View style={styles.container}>
       {/* Image preview */}
-      {selectedImage && (
+      {selectedImageUri && (
         <View style={styles.imagePreviewRow}>
           <View style={styles.imagePreviewContainer}>
-            <Image source={{ uri: selectedImage }} style={styles.imagePreview} />
-            <Pressable style={styles.imageRemoveBtn} onPress={() => setSelectedImage(null)}>
+            <Image source={{ uri: selectedImageUri }} style={styles.imagePreview} />
+            <Pressable style={styles.imageRemoveBtn} onPress={onClearImage}>
               <Text style={styles.imageRemoveText}>✕</Text>
             </Pressable>
           </View>
