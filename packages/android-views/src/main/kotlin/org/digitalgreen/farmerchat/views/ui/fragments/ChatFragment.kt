@@ -134,20 +134,20 @@ internal class ChatFragment : Fragment() {
         }
     }
 
-    private fun setupInputBar() {
-        val sendAction = {
-            try {
-                val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: return@sendAction
-                if (text.isEmpty()) return@sendAction
-                viewModel.sendQuery(text)
-                binding.inputBar.editMessage?.text?.clear()
-                updateInputBarButtons(hasText = false)
-            } catch (e: Exception) {
-                Log.w(TAG, "Send failed", e)
-            }
+    private fun dispatchSend() {
+        try {
+            val text = binding.inputBar.editMessage?.text?.toString()?.trim()
+            if (text.isNullOrEmpty()) return
+            viewModel.sendQuery(text)
+            binding.inputBar.editMessage?.text?.clear()
+            updateInputBarButtons(hasText = false)
+        } catch (e: Exception) {
+            Log.w(TAG, "Send failed", e)
         }
+    }
 
-        binding.inputBar.btnSend?.setOnClickListener { sendAction() }
+    private fun setupInputBar() {
+        binding.inputBar.btnSend?.setOnClickListener { dispatchSend() }
 
         binding.inputBar.editMessage?.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
@@ -160,7 +160,7 @@ internal class ChatFragment : Fragment() {
         binding.inputBar.editMessage?.setOnEditorActionListener { _, actionId, _ ->
             try {
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
-                    sendAction()
+                    dispatchSend()
                     true
                 } else false
             } catch (e: Exception) {

@@ -18,13 +18,19 @@ import { ResponseCard } from '../components/ResponseCard';
 import { ConnectivityBanner } from '../components/ConnectivityBanner';
 import type { ChatMessage } from '../hooks/useChat';
 
-// ── Colors ────────────────────────────────────────────────────────────────────
-const PRIMARY_GREEN = '#2E7D32';
-const LIGHT_GREEN   = '#4CAF50';
-const WHITE         = '#FFFFFF';
-const SURFACE_COLOR = '#F5F5F5';
-const TEXT_PRIMARY  = '#212121';
-const TEXT_SECONDARY = '#757575';
+// ── Dark palette (matches Compose + Views dark theme) ─────────────────────────
+const PRIMARY_GREEN    = '#2E7D32';
+const LIGHT_GREEN      = '#4CAF50';
+const WHITE            = '#FFFFFF';
+const DARK_BG          = '#0F1A0D';
+const DARK_TOOLBAR     = '#1A2318';
+const DARK_SURFACE     = '#1A2318';
+const DARK_SURFACE2    = '#243020';
+const TEXT_PRIMARY     = '#E8F5E9';
+const TEXT_SECONDARY   = '#8FA88C';
+const TEXT_MUTED       = '#5A6B58';
+const ONLINE_DOT       = '#69F0AE';
+const USER_BUBBLE      = '#4CAF50';
 
 // ── ChatTopBar ────────────────────────────────────────────────────────────────
 
@@ -32,21 +38,38 @@ interface ChatTopBarProps {
   title: string;
   historyEnabled: boolean;
   onHistoryPress: () => void;
+  onLanguagePress: () => void;
   primaryColor: string;
 }
 
-function ChatTopBar({ title, historyEnabled, onHistoryPress, primaryColor }: ChatTopBarProps) {
+function ChatTopBar({ title, historyEnabled, onHistoryPress, onLanguagePress, primaryColor }: ChatTopBarProps) {
   return (
-    <View style={[styles.topBar, { backgroundColor: WHITE }]}>
-      {/* Logo circle 34px */}
-      <View style={[styles.logoCircle, { backgroundColor: primaryColor }]}>
+    <View style={styles.topBar}>
+      {/* Avatar — 40px green circle */}
+      <View style={[styles.logoCircle, { backgroundColor: LIGHT_GREEN }]}>
         <Text style={styles.logoEmoji}>🌱</Text>
       </View>
 
-      {/* Title */}
-      <Text style={styles.topBarTitle} numberOfLines={1}>{title}</Text>
+      {/* Title column — title + online dot + subtitle */}
+      <View style={styles.topBarTitleCol}>
+        <View style={styles.topBarTitleRow}>
+          <Text style={styles.topBarTitle} numberOfLines={1}>{title}</Text>
+          <View style={styles.onlineDot} />
+        </View>
+        <Text style={styles.topBarSubtitle}>Smart Farming Assistant</Text>
+      </View>
 
-      <View style={{ flex: 1 }} />
+      {/* Language/translate icon */}
+      {historyEnabled && (
+        <Pressable
+          style={styles.topBarButton}
+          onPress={onLanguagePress}
+          accessibilityLabel="Language"
+          accessibilityRole="button"
+        >
+          <Text style={styles.topBarIcon}>🌐</Text>
+        </Pressable>
+      )}
 
       {/* History icon */}
       {historyEnabled && (
@@ -65,11 +88,11 @@ function ChatTopBar({ title, historyEnabled, onHistoryPress, primaryColor }: Cha
 
 // ── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyState({ primaryColor }: { primaryColor: string }) {
+function EmptyState() {
   return (
     <View style={styles.emptyState}>
       <Text style={styles.emptyEmoji}>🌾</Text>
-      <Text style={[styles.emptyTitle, { color: TEXT_PRIMARY }]}>
+      <Text style={styles.emptyTitle}>
         Ask a question about farming to get started
       </Text>
     </View>
@@ -96,11 +119,11 @@ function LoadingBubble() {
 
   return (
     <View style={styles.loadingRow}>
-      {/* Avatar */}
+      {/* Avatar — 36px green circle */}
       <View style={styles.avatar}>
-        <Text style={{ fontSize: 16 }}>🌱</Text>
+        <Text style={{ fontSize: 18 }}>🌱</Text>
       </View>
-      {/* Dots bubble */}
+      {/* Dots bubble — dark surface bg */}
       <View style={styles.loadingBubble}>
         {dots.map((dot, i) => (
           <Animated.View
@@ -197,6 +220,7 @@ export function ChatScreen() {
         title={config.headerTitle ?? 'FarmerChat AI'}
         historyEnabled={config.historyEnabled !== false}
         onHistoryPress={() => navigateTo('history')}
+        onLanguagePress={() => navigateTo('profile')}
         primaryColor={primaryColor}
       />
 
@@ -204,7 +228,7 @@ export function ChatScreen() {
 
       <View style={styles.chatBody}>
         {messages.length === 0 ? (
-          <EmptyState primaryColor={primaryColor} />
+          <EmptyState />
         ) : (
           <FlatList<ChatMessage>
             ref={flatListRef}
@@ -238,28 +262,32 @@ export function ChatScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container:      { flex: 1, backgroundColor: SURFACE_COLOR },
+  container: { flex: 1, backgroundColor: DARK_BG },
+  // Top bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'ios' ? 52 : 12,
-    paddingBottom: 12,
-    backgroundColor: WHITE,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E0E0E0',
+    paddingHorizontal: 12,
+    paddingTop: Platform.OS === 'ios' ? 52 : 10,
+    paddingBottom: 10,
+    backgroundColor: DARK_TOOLBAR,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 2,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
     gap: 10,
   },
-  logoCircle:  { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center' },
-  logoEmoji:   { fontSize: 18 },
-  topBarTitle: { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY, flexShrink: 1 },
-  topBarButton: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  logoCircle:  { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  logoEmoji:   { fontSize: 20 },
+  topBarTitleCol: { flex: 1 },
+  topBarTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  topBarTitle: { fontSize: 15, fontWeight: '700', color: WHITE, flexShrink: 1 },
+  topBarSubtitle: { fontSize: 11, color: TEXT_SECONDARY, marginTop: 1 },
+  onlineDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: ONLINE_DOT },
+  topBarButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
   topBarIcon:   { fontSize: 20 },
+  // Chat body
   chatBody:    { flex: 1 },
   messageList: { paddingHorizontal: 12, paddingVertical: 8 },
   emptyState: {
@@ -269,56 +297,55 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     gap: 16,
   },
-  emptyEmoji:  { fontSize: 48 },
+  emptyEmoji:  { fontSize: 56 },
   emptyTitle: {
     fontSize: 16,
-    fontWeight: '500',
     color: TEXT_SECONDARY,
     textAlign: 'center',
     lineHeight: 24,
   },
-  // Loading
+  // Loading bubble
   loadingRow:  { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 4, alignItems: 'flex-start' },
   avatar: {
-    width: 32, height: 32, borderRadius: 16,
-    backgroundColor: '#C8E6C9',
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: LIGHT_GREEN,
     alignItems: 'center', justifyContent: 'center', marginRight: 8, marginTop: 4,
   },
   loadingBubble: {
     flexDirection: 'row', gap: 6, alignItems: 'center',
-    backgroundColor: '#F1F8E9',
+    backgroundColor: DARK_SURFACE,
     borderRadius: 18, borderTopLeftRadius: 4,
     paddingHorizontal: 14, paddingVertical: 12,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 2, elevation: 1,
+    shadowOpacity: 0.2, shadowRadius: 2, elevation: 2,
   },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: LIGHT_GREEN },
   // User bubble
   userBubbleWrapper: {
     alignSelf: 'flex-end', maxWidth: '80%',
-    paddingHorizontal: 16, paddingVertical: 4, marginBottom: 4,
+    paddingHorizontal: 12, paddingVertical: 4, marginBottom: 4,
   },
   userBubble: {
-    backgroundColor: PRIMARY_GREEN,
+    backgroundColor: USER_BUBBLE,
     borderRadius: 18, borderBottomRightRadius: 4,
     paddingHorizontal: 14, paddingVertical: 10,
     shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
+    shadowOpacity: 0.18, shadowRadius: 3, elevation: 2,
   },
   userBubbleText: { color: WHITE, fontSize: 15, lineHeight: 22 },
-  // Error
+  // Error banner
   errorBanner: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: '#FFEBEE', borderLeftWidth: 3, borderLeftColor: '#D32F2F',
+    backgroundColor: '#3D1C22', borderLeftWidth: 3, borderLeftColor: '#CF6679',
     borderRadius: 8, paddingHorizontal: 14, paddingVertical: 12,
     marginHorizontal: 12, marginVertical: 4,
   },
   errorLeft:   { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, marginRight: 12 },
   errorEmoji:  { fontSize: 14 },
-  errorText:   { flex: 1, fontSize: 14, color: '#D32F2F', lineHeight: 20 },
+  errorText:   { flex: 1, fontSize: 14, color: '#CF6679', lineHeight: 20 },
   retryBtn: {
     paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 16, backgroundColor: PRIMARY_GREEN,
+    borderRadius: 16, backgroundColor: LIGHT_GREEN,
   },
   retryBtnText: { color: WHITE, fontSize: 13, fontWeight: '600' },
 });
