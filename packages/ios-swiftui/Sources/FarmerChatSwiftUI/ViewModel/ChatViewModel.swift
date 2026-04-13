@@ -454,6 +454,23 @@ internal final class ChatViewModel: ObservableObject {
         selectedLanguage = language.code
         UserDefaults.standard.set(language.code, forKey: "fc_selected_language")
         emitEvent(.languageChanged(from: previous, to: language.code, timestamp: Date()))
+
+        // Sync with server so AI responses are returned in the selected language.
+        guard let client = apiClient else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                await self.ensureGuestTokens()
+                let userId = await TokenStore.shared.userId
+                try await client.setPreferredLanguage(
+                    userId: userId,
+                    languageId: String(language.id)
+                )
+                print("[\(Self.tag)] setPreferredLanguage: synced languageId=\(language.id) (\(language.code)) to server")
+            } catch {
+                print("[\(Self.tag)] setPreferredLanguage: server sync failed (UI already updated): \(error)")
+            }
+        }
     }
 
     /// Fetch supported languages from the server and update [availableLanguageGroups].

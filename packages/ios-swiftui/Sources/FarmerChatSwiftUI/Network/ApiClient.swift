@@ -27,6 +27,7 @@ internal final class ApiClient {
         static let chatHistory         = "api/chat/conversation_chat_history/"
         static let conversationList    = "api/chat/conversation_list/"
         static let supportedLanguages  = "api/language/v2/country_wise_supported_languages/"
+        static let setPreferredLanguage = "api/user/set_preferred_language/"
     }
 
     // MARK: - Properties
@@ -92,7 +93,11 @@ internal final class ApiClient {
         var request = URLRequest(url: url, timeoutInterval: timeoutInterval)
         request.httpMethod = "POST"
         applyAuthHeaders(&request, accessToken: accessToken)
-        request.httpBody = try encoder.encode(body)
+        let encodedBody = try encoder.encode(body)
+        request.httpBody = encodedBody
+        if let reqStr = String(data: encodedBody, encoding: .utf8) {
+            Self.logger.debug("→ POST \(url.lastPathComponent) body: \(reqStr)")
+        }
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -385,6 +390,29 @@ internal final class ApiClient {
     }
 
     // MARK: - Languages
+
+    // MARK: - Set preferred language
+
+    private struct SetPreferredLanguageBody: Encodable {
+        let userId: String
+        let languageId: String
+    }
+
+    private struct SetPreferredLanguageResponse: Decodable {
+        let userId: String?
+    }
+
+    /// POST api/user/set_preferred_language/ — tells the server which language to use for AI responses.
+    func setPreferredLanguage(userId: String, languageId: String) async throws {
+        _ = try await postJSON(
+            path: Endpoint.setPreferredLanguage,
+            body: SetPreferredLanguageBody(userId: userId, languageId: languageId),
+            responseType: SetPreferredLanguageResponse.self
+        )
+        Self.logger.debug("setPreferredLanguage: languageId=\(languageId) for userId=\(userId)")
+    }
+
+    // MARK: - Supported languages
 
     /// Fetch the list of supported languages grouped by country.
     func getSupportedLanguages(countryCode: String? = nil) async throws -> [SupportedLanguageGroup] {

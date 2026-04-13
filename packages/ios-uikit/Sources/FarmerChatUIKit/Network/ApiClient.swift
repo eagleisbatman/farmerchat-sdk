@@ -20,7 +20,8 @@ internal final class ApiClient {
         static let transcribeAudio    = "api/chat/transcribe_audio/"
         static let chatHistory        = "api/chat/conversation_chat_history/"
         static let conversationList   = "api/chat/conversation_list/"
-        static let supportedLanguages = "api/language/v2/country_wise_supported_languages/"
+        static let supportedLanguages      = "api/language/v2/country_wise_supported_languages/"
+        static let setPreferredLanguage    = "api/user/set_preferred_language/"
     }
 
     private let baseURL: URL
@@ -67,7 +68,11 @@ internal final class ApiClient {
         var req = URLRequest(url: url, timeoutInterval: timeoutInterval)
         req.httpMethod = "POST"
         applyAuthHeaders(&req, accessToken: token)
-        req.httpBody = try encoder.encode(body)
+        let encodedBody = try encoder.encode(body)
+        req.httpBody = encodedBody
+        if let reqStr = String(data: encodedBody, encoding: .utf8) {
+            Self.logger.debug("→ POST \(url.lastPathComponent) body: \(reqStr)")
+        }
 
         let (data, response) = try await URLSession.shared.data(for: req)
         guard let http = response as? HTTPURLResponse else {
@@ -290,6 +295,22 @@ internal final class ApiClient {
             params: ["conversation_id": conversationId, "page": String(page)],
             responseType: ConversationChatHistoryResponse.self
         )
+    }
+
+    // MARK: - Language preference
+
+    private struct SetPreferredLanguageBody: Encodable {
+        let userId: String
+        let languageId: String
+    }
+    private struct SetPreferredLanguageResponse: Decodable { let userId: String? }
+
+    /// POST api/user/set_preferred_language/ — syncs the selected language to the server.
+    func setPreferredLanguage(userId: String, languageId: String) async throws {
+        _ = try await postJSON(path: Endpoint.setPreferredLanguage,
+                               body: SetPreferredLanguageBody(userId: userId, languageId: languageId),
+                               responseType: SetPreferredLanguageResponse.self)
+        Self.logger.debug("setPreferredLanguage: languageId=\(languageId) userId=\(userId)")
     }
 
     // MARK: - Languages
