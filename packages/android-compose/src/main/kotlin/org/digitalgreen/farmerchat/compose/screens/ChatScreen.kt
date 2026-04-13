@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Translate
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
@@ -102,9 +103,12 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
         Column(modifier = Modifier.fillMaxSize()) {
 
             ChatTopBar(
-                title          = FarmerChat.getConfig().headerTitle,
-                onHistoryClick = {
+                title           = FarmerChat.getConfig().headerTitle,
+                onHistoryClick  = {
                     try { viewModel.navigateTo(ChatViewModel.Screen.History) } catch (_: Exception) {}
+                },
+                onLanguageClick = {
+                    try { viewModel.navigateTo(ChatViewModel.Screen.Profile) } catch (_: Exception) {}
                 },
             )
 
@@ -171,6 +175,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
 private fun ChatTopBar(
     title: String,
     onHistoryClick: () -> Unit,
+    onLanguageClick: () -> Unit,
 ) {
     Surface(
         color = Color(0xFF1A2318),
@@ -219,6 +224,18 @@ private fun ChatTopBar(
                         color = SdkTextSecondary,
                         fontSize = 11.sp,
                     )
+                }
+
+                // Language / profile icon
+                if (FarmerChat.getConfig().profileEnabled) {
+                    IconButton(onClick = onLanguageClick) {
+                        Icon(
+                            Icons.Default.Translate,
+                            contentDescription = "Language",
+                            tint = SdkTextSecondary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
 
                 // History icon

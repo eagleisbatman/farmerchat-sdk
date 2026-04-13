@@ -5,6 +5,9 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -56,12 +59,27 @@ internal class ProfileFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         try {
+            applyWindowInsets()
             setupToolbar()
             setupLanguageSelector()
             setupFooter()
             observeState()
+            viewModel.loadLanguages()
         } catch (e: Exception) {
             Log.e(TAG, "onViewCreated failed", e)
+        }
+    }
+
+    private fun applyWindowInsets() {
+        try {
+            ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                binding.toolbar.updatePadding(top = bars.top)
+                binding.recyclerLanguages.updatePadding(bottom = bars.bottom)
+                WindowInsetsCompat.CONSUMED
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "applyWindowInsets failed", e)
         }
     }
 
@@ -82,6 +100,7 @@ internal class ProfileFragment : Fragment() {
                 try {
                     viewModel.setLanguage(language.code)
                     languageAdapter.setSelectedCode(language.code)
+                    findNavController().navigateUp()
                 } catch (e: Exception) {
                     Log.w(TAG, "Language selection failed", e)
                 }

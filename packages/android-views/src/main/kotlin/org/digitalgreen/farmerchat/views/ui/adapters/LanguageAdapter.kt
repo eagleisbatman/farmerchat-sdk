@@ -67,11 +67,21 @@ internal class LanguageAdapter(
 
                 val isSelected = language.code == selectedCode
                 val bgColor = if (isSelected) {
-                    ContextCompat.getColor(binding.root.context, R.color.fc_selected_language_bg)
+                    ContextCompat.getColor(binding.root.context, R.color.fc_dark_surface2)
                 } else {
-                    ContextCompat.getColor(binding.root.context, R.color.fc_card_background)
+                    ContextCompat.getColor(binding.root.context, R.color.fc_dark_surface)
                 }
                 binding.cardLanguage.setCardBackgroundColor(bgColor)
+                binding.cardLanguage.strokeColor = if (isSelected) {
+                    ContextCompat.getColor(binding.root.context, R.color.fc_mic_button)
+                } else {
+                    ContextCompat.getColor(binding.root.context, R.color.fc_dark_surface2)
+                }
+                binding.cardLanguage.strokeWidth = if (isSelected) 4 else 2
+                binding.textNativeName.setTextColor(
+                    if (isSelected) ContextCompat.getColor(binding.root.context, R.color.fc_dark_text_primary)
+                    else ContextCompat.getColor(binding.root.context, R.color.fc_dark_text_primary)
+                )
 
                 binding.root.setOnClickListener {
                     try {
