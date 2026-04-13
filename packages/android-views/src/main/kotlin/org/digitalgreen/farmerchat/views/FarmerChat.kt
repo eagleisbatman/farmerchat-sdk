@@ -11,6 +11,7 @@ import org.digitalgreen.farmerchat.views.network.ApiClient
 import org.digitalgreen.farmerchat.views.network.ConnectivityMonitor
 import org.digitalgreen.farmerchat.views.network.DeviceInfoProvider
 import org.digitalgreen.farmerchat.views.network.GuestApiClient
+import org.digitalgreen.farmerchat.views.network.SdkPreferences
 import org.digitalgreen.farmerchat.views.network.TokenStore
 
 /**
@@ -63,6 +64,7 @@ object FarmerChat {
                 this.appContext = appCtx
                 this.sdkApiKey = apiKey
                 this.config = config
+                SdkPreferences.init(appCtx)
                 this.sessionId = java.util.UUID.randomUUID().toString()
 
                 val deviceId = DeviceInfoProvider.getStableDeviceId(appCtx)

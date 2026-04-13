@@ -213,3 +213,11 @@ struct ConversationChatHistoryResponse: Decodable {
     let conversationId: String
     let data: [ChatHistoryItem]
 }
+
+// MARK: - SSE
+
+/// A single Server-Sent Event, parsed by SSEParser.
+struct SseEvent {
+    let event: String
+    let data: String
+}
