@@ -5,50 +5,114 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/fc_background">
+    android:fitsSystemWindows="true"
+    android:background="@color/fc_dark_bg">
 
-    <!-- Toolbar -->
+    <!-- Toolbar — dark surface, avatar + title + subtitle + online dot + action icons -->
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="0dp"
-        android:layout_height="@dimen/fc_toolbar_height"
+        android:layout_height="wrap_content"
+        android:minHeight="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="@dimen/fc_padding_medium"
-        android:background="@color/fc_primary"
-        android:elevation="@dimen/fc_elevation_small"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:background="@color/fc_dark_toolbar"
+        android:elevation="@dimen/fc_elevation_medium"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <TextView
-            android:id="@+id/toolbar_title"
+        <!-- Avatar circle -->
+        <FrameLayout
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="@drawable/fc_avatar_bg">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="🌱"
+                android:textSize="20sp" />
+        </FrameLayout>
+
+        <!-- 10dp spacer -->
+        <Space
+            android:layout_width="10dp"
+            android:layout_height="wrap_content" />
+
+        <!-- Title + online dot + subtitle column -->
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="@color/fc_on_primary"
-            android:textSize="@dimen/fc_text_title"
-            android:textStyle="bold"
-            tools:text="FarmerChat" />
+            android:orientation="vertical">
 
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/toolbar_title"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/fc_app_title"
+                    android:textColor="@color/fc_dark_text_primary"
+                    android:textSize="15sp"
+                    android:textStyle="bold"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <!-- Online dot -->
+                <View
+                    android:layout_width="7dp"
+                    android:layout_height="7dp"
+                    android:layout_marginStart="6dp"
+                    android:background="@drawable/fc_online_dot" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/fc_app_subtitle"
+                android:textColor="@color/fc_dark_text_secondary"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Language / translate icon -->
+        <ImageButton
+            android:id="@+id/btn_language"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_fc_translate"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/fc_language"
+            android:scaleType="center" />
+
+        <!-- History icon -->
         <ImageButton
             android:id="@+id/btn_history"
-            android:layout_width="@dimen/fc_icon_button_size"
-            android:layout_height="@dimen/fc_icon_button_size"
-            android:src="@android:drawable/ic_menu_recent_history"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_fc_history"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/fc_history"
-            app:tint="@color/fc_on_primary" />
+            android:scaleType="center" />
 
+        <!-- Profile icon -->
         <ImageButton
             android:id="@+id/btn_profile"
-            android:layout_width="@dimen/fc_icon_button_size"
-            android:layout_height="@dimen/fc_icon_button_size"
-            android:layout_marginStart="@dimen/fc_padding_small"
-            android:src="@android:drawable/ic_menu_manage"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_fc_person"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/fc_profile"
-            app:tint="@color/fc_on_primary" />
+            android:scaleType="center" />
     </LinearLayout>
 
     <!-- Connectivity Banner -->
@@ -62,49 +126,44 @@
         app:layout_constraintEnd_toEndOf="parent"
         tools:visibility="visible" />
 
-    <!-- Starter Questions Area (visible when no messages) -->
-    <ScrollView
+    <!-- Empty State / Starter questions (visible when no messages) -->
+    <LinearLayout
         android:id="@+id/starter_questions_area"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:orientation="vertical"
+        android:gravity="center"
         android:visibility="gone"
-        android:padding="@dimen/fc_padding_medium"
         app:layout_constraintTop_toBottomOf="@id/connectivity_banner"
         app:layout_constraintBottom_toTopOf="@id/error_banner"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        tools:visibility="gone">
+        tools:visibility="visible">
 
-        <LinearLayout
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="🌾"
+            android:textSize="56sp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:layout_marginHorizontal="32dp"
+            android:text="Ask a question about farming to get started"
+            android:textColor="@color/fc_dark_text_secondary"
+            android:textSize="16sp"
+            android:gravity="center" />
+
+        <!-- Hidden chip group kept for backward compat (starters API is no-op) -->
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/starter_chips_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fc_starter_title"
-                android:textSize="@dimen/fc_text_heading"
-                android:textColor="@color/fc_text_primary"
-                android:textStyle="bold"
-                android:layout_marginBottom="@dimen/fc_padding_medium" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/fc_starter_subtitle"
-                android:textSize="@dimen/fc_text_body"
-                android:textColor="@color/fc_text_secondary"
-                android:layout_marginBottom="@dimen/fc_padding_large" />
-
-            <com.google.android.material.chip.ChipGroup
-                android:id="@+id/starter_chips_container"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                app:chipSpacing="@dimen/fc_padding_small" />
-        </LinearLayout>
-    </ScrollView>
+            android:visibility="gone"
+            android:layout_marginTop="8dp" />
+    </LinearLayout>
 
     <!-- Messages RecyclerView -->
     <androidx.recyclerview.widget.RecyclerView
@@ -159,7 +218,7 @@
         android:layout_height="wrap_content"
         android:indeterminate="true"
         android:visibility="gone"
-        app:indicatorColor="@color/fc_primary"
+        app:indicatorColor="@color/fc_mic_button"
         app:layout_constraintBottom_toTopOf="@id/input_bar"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -170,7 +229,7 @@
         android:id="@+id/input_bar"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="@color/fc_surface"
+        android:background="@color/fc_dark_surface"
         android:elevation="@dimen/fc_elevation_medium"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"

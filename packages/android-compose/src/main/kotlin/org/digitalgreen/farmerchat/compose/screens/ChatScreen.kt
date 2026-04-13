@@ -31,6 +31,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -91,11 +94,7 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
     Box(
         modifier = Modifier.fillMaxSize().background(
             Brush.verticalGradient(
-                colorStops = arrayOf(
-                    0.0f  to SdkDarkBg,
-                    0.45f to Color(0xFF0A1508),
-                    1.0f  to Color.Black,
-                ),
+                colors = listOf(Color(0xFF152014), SdkDarkBg),
             ),
         ),
     ) {
@@ -173,57 +172,65 @@ private fun ChatTopBar(
     onHistoryClick: () -> Unit,
 ) {
     Surface(
-        color = Color.Black.copy(alpha = 0.35f),
+        color = Color(0xFF1A2318),
         modifier = Modifier.fillMaxWidth(),
+        shadowElevation = 4.dp,
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 4.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            // Logo circle 36dp
-            Box(
+        Column {
+            Spacer(Modifier.windowInsetsPadding(WindowInsets.statusBars))
+            Row(
                 modifier = Modifier
-                    .size(36.dp)
-                    .background(SdkGreen500, CircleShape),
-                contentAlignment = Alignment.Center,
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("🌱", fontSize = 18.sp)
-            }
+                // Logo circle 40dp
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(SdkGreen500, CircleShape),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("🌱", fontSize = 20.sp)
+                }
 
-            Spacer(Modifier.width(10.dp))
+                Spacer(Modifier.width(10.dp))
 
-            // Title + online dot + subtitle
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Title + online dot + subtitle
+                Column(modifier = Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text  = title.ifBlank { "FarmerChat AI" },
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .background(SdkGreenAccent, CircleShape),
+                        )
+                    }
                     Text(
-                        text  = title.ifBlank { "FarmerChat AI" },
-                        color = Color.White,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Spacer(Modifier.width(6.dp))
-                    // Online dot
-                    Box(
-                        modifier = Modifier
-                            .size(7.dp)
-                            .background(SdkGreenAccent, CircleShape),
+                        text  = "Smart Farming Assistant",
+                        color = SdkTextSecondary,
+                        fontSize = 11.sp,
                     )
                 }
-                Text(
-                    text  = "AI Farm Assistant",
-                    color = SdkTextSecondary,
-                    fontSize = 11.sp,
-                )
-            }
 
-            // History icon
-            if (FarmerChat.getConfig().historyEnabled) {
-                IconButton(onClick = onHistoryClick) {
-                    Icon(Icons.Default.History, contentDescription = "History", tint = Color.White)
+                // History icon
+                if (FarmerChat.getConfig().historyEnabled) {
+                    IconButton(onClick = onHistoryClick) {
+                        Icon(
+                            Icons.Default.History,
+                            contentDescription = "History",
+                            tint = SdkTextSecondary,
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
                 }
             }
         }

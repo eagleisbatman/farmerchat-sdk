@@ -38,4 +38,15 @@
     <!-- Divider -->
     <color name="fc_divider">#E0E0E0</color>
 
+    <!-- Dark theme (matches Compose dark palette) -->
+    <color name="fc_dark_bg">#0F1A0D</color>
+    <color name="fc_dark_toolbar">#1A2318</color>
+    <color name="fc_dark_surface">#1A2318</color>
+    <color name="fc_dark_surface2">#243020</color>
+    <color name="fc_dark_text_primary">#E8F5E9</color>
+    <color name="fc_dark_text_secondary">#8FA88C</color>
+    <color name="fc_dark_text_muted">#5A6B58</color>
+    <color name="fc_online_dot">#69F0AE</color>
+    <color name="fc_mic_button">#4CAF50</color>
+
 </resources>

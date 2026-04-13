@@ -48,4 +48,13 @@
     <string name="fc_error_generic">Something went wrong. Please try again.</string>
     <string name="fc_error_not_initialized">FarmerChat SDK is not initialized</string>
 
+    <!-- Toolbar -->
+    <string name="fc_app_title">FarmerChat AI</string>
+    <string name="fc_app_subtitle">Smart Farming Assistant</string>
+    <string name="fc_language">Language</string>
+    <string name="fc_online_status">Online</string>
+
+    <!-- Input bar -->
+    <string name="fc_message_hint_crops">Ask about your crops…</string>
+
 </resources>

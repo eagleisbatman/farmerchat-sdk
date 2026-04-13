@@ -74,9 +74,13 @@ internal class ChatFragment : Fragment() {
 
     private fun setupToolbar() {
         val config = FarmerChat.getConfig()
-        binding.toolbarTitle.text = config.headerTitle
+        // Only override the title if the host app set one; default is in the layout string
+        if (config.headerTitle.isNotBlank()) {
+            binding.toolbarTitle.text = config.headerTitle
+        }
 
         binding.btnHistory.visibility = if (config.historyEnabled) View.VISIBLE else View.GONE
+        binding.btnLanguage?.visibility = if (config.historyEnabled) View.VISIBLE else View.GONE
         binding.btnProfile.visibility = if (config.profileEnabled) View.VISIBLE else View.GONE
 
         binding.btnHistory.setOnClickListener {
@@ -84,6 +88,14 @@ internal class ChatFragment : Fragment() {
                 findNavController().navigate(R.id.action_chat_to_history)
             } catch (e: Exception) {
                 Log.w(TAG, "Navigation to history failed", e)
+            }
+        }
+
+        binding.btnLanguage?.setOnClickListener {
+            try {
+                findNavController().navigate(R.id.action_chat_to_profile)
+            } catch (e: Exception) {
+                Log.w(TAG, "Navigation to profile (language) failed", e)
             }
         }
 
@@ -123,38 +135,53 @@ internal class ChatFragment : Fragment() {
     }
 
     private fun setupInputBar() {
-        binding.inputBar.btnSend?.setOnClickListener {
+        val sendAction = {
             try {
-                val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: return@setOnClickListener
-                if (text.isEmpty()) return@setOnClickListener
+                val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: return@sendAction
+                if (text.isEmpty()) return@sendAction
                 viewModel.sendQuery(text)
                 binding.inputBar.editMessage?.text?.clear()
+                updateInputBarButtons(hasText = false)
             } catch (e: Exception) {
-                Log.w(TAG, "Send click failed", e)
+                Log.w(TAG, "Send failed", e)
             }
         }
+
+        binding.inputBar.btnSend?.setOnClickListener { sendAction() }
+
+        binding.inputBar.editMessage?.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                updateInputBarButtons(hasText = !s.isNullOrBlank())
+            }
+        })
 
         binding.inputBar.editMessage?.setOnEditorActionListener { _, actionId, _ ->
             try {
                 if (actionId == EditorInfo.IME_ACTION_SEND) {
-                    val text = binding.inputBar.editMessage?.text?.toString()?.trim() ?: return@setOnEditorActionListener false
-                    if (text.isEmpty()) return@setOnEditorActionListener false
-                    viewModel.sendQuery(text)
-                    binding.inputBar.editMessage?.text?.clear()
+                    sendAction()
                     true
-                } else {
-                    false
-                }
+                } else false
             } catch (e: Exception) {
                 Log.w(TAG, "Editor action failed", e)
                 false
             }
         }
 
-        // Show/hide voice and camera buttons based on config
         val config = FarmerChat.getConfig()
-        binding.inputBar.btnVoice?.visibility = if (config.voiceInputEnabled) View.VISIBLE else View.GONE
-        binding.inputBar.btnCamera?.visibility = if (config.imageInputEnabled) View.VISIBLE else View.GONE
+        if (!config.imageInputEnabled) binding.inputBar.btnCameraContainer?.visibility = View.GONE
+        if (!config.voiceInputEnabled) binding.inputBar.btnVoiceContainer?.visibility = View.GONE
+        updateInputBarButtons(hasText = false)
+    }
+
+    private fun updateInputBarButtons(hasText: Boolean) {
+        try {
+            binding.inputBar.btnSendContainer?.visibility = if (hasText) View.VISIBLE else View.GONE
+            binding.inputBar.btnVoiceContainer?.visibility = if (hasText) View.GONE else View.VISIBLE
+        } catch (e: Exception) {
+            Log.w(TAG, "updateInputBarButtons failed", e)
+        }
     }
 
     private fun observeState() {
