@@ -67,6 +67,8 @@ internal final class ChatViewModel: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var conversationId: String?
     private var lastQuery: (text: String, inputMethod: String)?
+    /// Tracks the in-flight setPreferredLanguage API task so sendQuery can await it first.
+    private var languageSyncTask: Task<Void, Never>?
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
     private var apiClient: ApiClient? { FarmerChat.shared.apiClient }
@@ -109,6 +111,13 @@ internal final class ChatViewModel: ObservableObject {
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
+
+                // Wait for any in-flight setPreferredLanguage to complete so the server
+                // has the language preference before processing the first query.
+                if let syncTask = self.languageSyncTask {
+                    await syncTask.value
+                    self.languageSyncTask = nil
+                }
 
                 // Create a new conversation if needed
                 if self.conversationId == nil {
@@ -206,6 +215,10 @@ internal final class ChatViewModel: ObservableObject {
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
+                if let syncTask = self.languageSyncTask {
+                    await syncTask.value
+                    self.languageSyncTask = nil
+                }
                 if self.conversationId == nil {
                     let userId = await TokenStore.shared.userId
                     let conv = try await client.createNewConversation(userId: userId)
@@ -363,7 +376,26 @@ internal final class ChatViewModel: ObservableObject {
 
                 print("[\(Self.tag)] loadLanguages: countryCode='\(effectiveCC)'")
                 let groups = try await client.getSupportedLanguages(countryCode: effectiveCC)
-                self.availableLanguages = groups.flatMap { $0.languages }
+                let allLanguages = groups.flatMap { $0.languages }
+                self.availableLanguages = allLanguages
+
+                // For returning users, re-sync the saved language preference every session.
+                let onboardingDone = SdkPreferences.onboardingDone
+                let storedCode = SdkPreferences.selectedLanguage ?? ""
+                if onboardingDone, !storedCode.isEmpty,
+                   let lang = allLanguages.first(where: { $0.code == storedCode }) {
+                    print("[\(Self.tag)] loadLanguages: auto-syncing language '\(storedCode)' for returning user")
+                    self.languageSyncTask = Task { [weak self] in
+                        guard let self else { return }
+                        do {
+                            let userId = await TokenStore.shared.userId
+                            try await client.setPreferredLanguage(userId: userId, languageId: String(lang.id))
+                            print("[\(Self.tag)] loadLanguages: language auto-sync succeeded (languageId=\(lang.id))")
+                        } catch {
+                            print("[\(Self.tag)] loadLanguages: language auto-sync failed: \(error)")
+                        }
+                    }
+                }
             } catch {
                 print("[\(Self.tag)] loadLanguages failed: \(error)")
             }
@@ -378,7 +410,7 @@ internal final class ChatViewModel: ObservableObject {
         // in the selected language. Look up the integer id from availableLanguages.
         guard let client = apiClient,
               let lang = availableLanguages.first(where: { $0.code == code }) else { return }
-        Task { [weak self] in
+        languageSyncTask = Task { [weak self] in
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
