@@ -26,8 +26,8 @@ struct GuestAPIClient {
 
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
-        request.setValue("application/json",         forHTTPHeaderField: "Content-Type")
-        request.setValue("Api-Key \(Self.guestApiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json",   forHTTPHeaderField: "Content-Type")
+        request.setValue(Self.guestApiKey,     forHTTPHeaderField: "API-Key")
         request.httpBody = try JSONEncoder().encode(["device_id": deviceId])
 
         let (data, response) = try await URLSession.shared.data(for: request)
