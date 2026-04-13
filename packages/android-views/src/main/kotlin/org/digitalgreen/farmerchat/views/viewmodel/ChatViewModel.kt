@@ -403,6 +403,17 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
+    fun startNewConversation() {
+        try {
+            _messages.value = emptyList()
+            _chatState.value = ChatUiState.Idle
+            conversationId = null
+            _currentScreen.value = Screen.Chat
+        } catch (e: Exception) {
+            Log.w(TAG, "startNewConversation failed", e)
+        }
+    }
+
     fun setIsConnected(connected: Boolean) {
         _isConnected.value = connected
     }

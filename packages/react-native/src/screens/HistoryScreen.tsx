@@ -7,32 +7,44 @@ import {
   ActivityIndicator,
   StyleSheet,
   Platform,
+  TextInput,
 } from 'react-native';
 import { useChatContext as useChat } from '../ChatProvider';
 import { useFarmerChatConfig } from '../FarmerChat';
 import type { ConversationListItem } from '../models/responses';
 
-// ── Colors ────────────────────────────────────────────────────────────────────
-const PRIMARY_GREEN  = '#2E7D32';
-const WHITE          = '#FFFFFF';
-const SURFACE_COLOR  = '#F5F5F5';
-const TEXT_PRIMARY   = '#212121';
-const TEXT_SECONDARY = '#757575';
-const DIVIDER_COLOR  = '#E0E0E0';
-const ITEM_ICON_BG   = '#E8F5E9';
+// ── Dark palette (mirrors Compose & iOS) ──────────────────────────────────────
+const DARK_BG       = '#0F1A0D';
+const DARK_TOOLBAR  = '#1A2318';
+const DARK_CARD     = '#172213';
+const DARK_SURFACE2 = '#243020';
+const ACCENT_GREEN  = '#4CAF50';
+const LABEL_COLOR   = '#4A5E48';
+const TEXT_PRIMARY  = '#E8F5E9';
+const TEXT_SECONDARY = '#8FA88C';
+const TEXT_MUTED    = '#5A6B58';
 
 // ── Date formatting ───────────────────────────────────────────────────────────
 
 function formatRelativeDate(dateStr?: string | null): string {
   if (!dateStr) return '';
-  const date = new Date(dateStr);
+  // Normalize: T→space, strip timezone/sub-seconds
+  const normalized = dateStr
+    .replace('T', ' ')
+    .split('Z')[0]
+    .split('+')[0]
+    .trim()
+    .slice(0, 19);
+  const date = new Date(normalized.replace(' ', 'T') + 'Z'); // parse as UTC
   if (isNaN(date.getTime())) return dateStr;
   const now = Date.now();
   const secs = (now - date.getTime()) / 1000;
-  if (secs < 60) return 'Just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
+  if (secs < 0)     return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  if (secs < 60)    return 'Just now';
+  if (secs < 3600)  return `${Math.floor(secs / 60)}m ago`;
   if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
   if (secs < 172800) return 'Yesterday';
+  if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
@@ -53,19 +65,24 @@ function topicEmoji(title?: string | null): string {
 
 // ── TopBar ────────────────────────────────────────────────────────────────────
 
-function TopBar({ onBack, primaryColor, onNewChat }: { onBack: () => void; primaryColor: string; onNewChat: () => void }) {
+function TopBar({
+  onBack,
+  onNewChat,
+}: {
+  onBack: () => void;
+  onNewChat: () => void;
+}) {
   return (
     <View style={styles.topBar}>
       <Pressable style={styles.backBtn} onPress={onBack} accessibilityLabel="Go back" accessibilityRole="button">
-        <Text style={[styles.backArrow, { color: primaryColor }]}>←</Text>
+        <Text style={styles.backArrow}>←</Text>
       </Pressable>
       <View style={{ flex: 1 }}>
         <Text style={styles.topBarTitle}>Chat History</Text>
         <Text style={styles.topBarSub}>Your farming conversations</Text>
       </View>
-      {/* + New conversation */}
       <Pressable
-        style={[styles.addBtn, { backgroundColor: PRIMARY_GREEN }]}
+        style={styles.addBtn}
         onPress={onNewChat}
         accessibilityLabel="New conversation"
         accessibilityRole="button"
@@ -79,15 +96,14 @@ function TopBar({ onBack, primaryColor, onNewChat }: { onBack: () => void; prima
 // ── Conversation item ─────────────────────────────────────────────────────────
 
 function ConversationItem({ item, onPress }: { item: ConversationListItem; onPress: () => void }) {
+  const title = item.conversation_title?.trim() || 'Conversation';
   return (
     <Pressable style={styles.item} onPress={onPress} accessibilityRole="button">
-      {/* Icon circle 40px */}
       <View style={styles.iconCircle}>
-        <Text style={{ fontSize: 18 }}>{topicEmoji(item.conversation_title)}</Text>
+        <Text style={{ fontSize: 20 }}>{topicEmoji(item.conversation_title)}</Text>
       </View>
-      {/* Content */}
       <View style={styles.itemContent}>
-        <Text style={styles.itemTitle} numberOfLines={2}>{item.conversation_title ?? 'Conversation'}</Text>
+        <Text style={styles.itemTitle} numberOfLines={1}>{title}</Text>
         <Text style={styles.itemDate}>{formatRelativeDate(item.created_on)}</Text>
       </View>
       <Text style={styles.chevron}>›</Text>
@@ -100,14 +116,12 @@ function ConversationItem({ item, onPress }: { item: ConversationListItem; onPre
 interface Section { title: string; data: ConversationListItem[] }
 
 export function HistoryScreen() {
-  const config = useFarmerChatConfig();
   const { loadConversationList, loadConversation, navigateTo, startNewConversation, conversationList } = useChat();
   const conversations = conversationList as ConversationListItem[];
 
-  const primaryColor = config.theme?.primaryColor ?? PRIMARY_GREEN;
-
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -135,25 +149,31 @@ export function HistoryScreen() {
     try { await loadConversation(item); navigateTo('chat'); } catch { /* no-op */ }
   }, [loadConversation, navigateTo]);
 
-  // Group conversations by their grouping label or derive from date
+  const filtered = useMemo(() =>
+    searchQuery.trim()
+      ? conversations.filter(c =>
+          (c.conversation_title ?? '').toLowerCase().includes(searchQuery.toLowerCase())
+        )
+      : conversations,
+    [conversations, searchQuery],
+  );
+
   const sections: Section[] = useMemo(() => {
     const grouped: Record<string, ConversationListItem[]> = {};
-    conversations.forEach(item => {
+    filtered.forEach(item => {
       const key = item.grouping ?? 'Older';
       if (!grouped[key]) grouped[key] = [];
       grouped[key].push(item);
     });
     return Object.entries(grouped).map(([title, data]) => ({ title, data }));
-  }, [conversations]);
-
-  // ── States ─────────────────────────────────────────────────────────────────
+  }, [filtered]);
 
   let content: React.ReactNode;
 
   if (loading) {
     content = (
       <View style={styles.center}>
-        <ActivityIndicator color={primaryColor} size="large" />
+        <ActivityIndicator color={ACCENT_GREEN} size="large" />
       </View>
     );
   } else if (error) {
@@ -161,12 +181,12 @@ export function HistoryScreen() {
       <View style={styles.center}>
         <Text style={styles.emptyTitle}>⚠️</Text>
         <Text style={styles.errorText}>{error}</Text>
-        <Pressable style={[styles.retryBtn, { backgroundColor: primaryColor }]} onPress={fetchHistory} accessibilityRole="button">
+        <Pressable style={styles.retryBtn} onPress={fetchHistory} accessibilityRole="button">
           <Text style={styles.retryBtnText}>Try Again</Text>
         </Pressable>
       </View>
     );
-  } else if (conversations.length === 0) {
+  } else if (filtered.length === 0) {
     content = (
       <View style={styles.center}>
         <View style={styles.emptyIconCircle}>
@@ -190,13 +210,27 @@ export function HistoryScreen() {
           <ConversationItem item={item} onPress={() => handleSelect(item)} />
         )}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 24 }}
       />
     );
   }
 
   return (
     <View style={styles.container}>
-      <TopBar onBack={handleBack} primaryColor={primaryColor} onNewChat={handleNewChat} />
+      <TopBar onBack={handleBack} onNewChat={handleNewChat} />
+      {/* Search bar */}
+      <View style={styles.searchContainer}>
+        <Text style={styles.searchIcon}>🔍</Text>
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search conversations..."
+          placeholderTextColor={TEXT_MUTED}
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          returnKeyType="search"
+          clearButtonMode="while-editing"
+        />
+      </View>
       {content}
     </View>
   );
@@ -205,27 +239,41 @@ export function HistoryScreen() {
 // ── Styles ────────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: SURFACE_COLOR },
+  container: { flex: 1, backgroundColor: DARK_BG },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: Platform.OS === 'ios' ? 52 : 12,
-    paddingBottom: 12,
-    backgroundColor: WHITE,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER_COLOR,
+    paddingBottom: 10,
+    backgroundColor: DARK_TOOLBAR,
   },
   backBtn:      { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  backArrow:    { fontSize: 22, fontWeight: '600' },
-  topBarTitle:  { fontSize: 18, fontWeight: '600', color: TEXT_PRIMARY },
+  backArrow:    { fontSize: 22, fontWeight: '600', color: TEXT_PRIMARY },
+  topBarTitle:  { fontSize: 18, fontWeight: '700', color: TEXT_PRIMARY },
   topBarSub:    { fontSize: 12, color: TEXT_SECONDARY, marginTop: 1 },
   addBtn: {
-    width: 36, height: 36, borderRadius: 18,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: ACCENT_GREEN,
     alignItems: 'center', justifyContent: 'center',
   },
-  addBtnText: { color: WHITE, fontSize: 22, lineHeight: 28 },
+  addBtnText: { color: '#FFFFFF', fontSize: 24, lineHeight: 30, fontWeight: '400' },
+
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: DARK_SURFACE2,
+    marginHorizontal: 16,
+    marginVertical: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  searchIcon:  { fontSize: 15, color: TEXT_MUTED },
+  searchInput: { flex: 1, fontSize: 14, color: TEXT_PRIMARY, padding: 0 },
+
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32, gap: 16 },
   emptyIconCircle: {
     width: 90, height: 90, borderRadius: 45,
@@ -236,31 +284,33 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: 18, fontWeight: '600', color: TEXT_PRIMARY, textAlign: 'center' },
   emptySub:   { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 20 },
   errorText:  { fontSize: 14, color: TEXT_SECONDARY, textAlign: 'center', lineHeight: 20 },
-  retryBtn:   { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20 },
-  retryBtnText: { color: WHITE, fontWeight: '600', fontSize: 14 },
+  retryBtn:   { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 20, backgroundColor: ACCENT_GREEN },
+  retryBtnText: { color: '#FFFFFF', fontWeight: '600', fontSize: 14 },
+
   sectionHeader: {
-    backgroundColor: SURFACE_COLOR,
-    paddingHorizontal: 16, paddingVertical: 8,
+    backgroundColor: DARK_BG,
+    paddingHorizontal: 20, paddingTop: 12, paddingBottom: 4,
   },
   sectionHeaderText: {
-    fontSize: 12, fontWeight: '600', color: TEXT_SECONDARY,
-    letterSpacing: 0.8,
+    fontSize: 10, fontWeight: '700', color: LABEL_COLOR,
+    letterSpacing: 1.5,
   },
+
   item: {
     flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 14, paddingHorizontal: 16,
-    backgroundColor: WHITE,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: DIVIDER_COLOR,
+    paddingVertical: 14, paddingHorizontal: 14,
+    marginHorizontal: 16, marginVertical: 4,
+    backgroundColor: DARK_CARD,
+    borderRadius: 14,
     gap: 12,
   },
   iconCircle: {
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: ITEM_ICON_BG,
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: '#4CAF5026',
     alignItems: 'center', justifyContent: 'center',
   },
   itemContent: { flex: 1 },
-  itemTitle:   { fontSize: 14, fontWeight: '500', color: TEXT_PRIMARY, lineHeight: 20 },
-  itemDate:    { fontSize: 12, color: TEXT_SECONDARY, marginTop: 2 },
-  chevron:     { fontSize: 22, color: TEXT_SECONDARY, marginLeft: 8 },
+  itemTitle:   { fontSize: 14, fontWeight: '600', color: TEXT_PRIMARY, lineHeight: 20 },
+  itemDate:    { fontSize: 11, color: TEXT_MUTED, marginTop: 3 },
+  chevron:     { fontSize: 22, color: LABEL_COLOR, marginLeft: 8 },
 });

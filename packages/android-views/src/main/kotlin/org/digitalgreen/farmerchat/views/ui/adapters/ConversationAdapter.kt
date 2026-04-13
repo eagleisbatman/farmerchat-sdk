@@ -28,33 +28,50 @@ internal class ConversationAdapter(
     private companion object {
         const val TAG = "FC.ConversationAdapter"
 
-        /** ISO date parsers — ordered from most to least specific. */
-        val DATE_PARSERS: List<SimpleDateFormat> = listOf(
-            "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ",
-            "yyyy-MM-dd'T'HH:mm:ssZ",
-            "yyyy-MM-dd'T'HH:mm:ss",
-            "yyyy-MM-dd HH:mm:ss",
-        ).map { pattern ->
-            SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+        fun formatDate(dateStr: String?): String {
+            if (dateStr.isNullOrBlank()) return ""
+            return try {
+                val normalized = dateStr
+                    .replace('T', ' ')
+                    .substringBefore('Z')
+                    .substringBefore('+')
+                    .trim()
+                    .let { s -> if (s.length > 19) s.take(19) else s }
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
+                    isLenient = false
+                    timeZone  = TimeZone.getTimeZone("UTC")
+                }
+                val date: Date = try { sdf.parse(normalized) } catch (_: Exception) { null }
+                    ?: return dateStr
+                val diffMs = System.currentTimeMillis() - date.time
+                when {
+                    diffMs < 0L           -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+                    diffMs < 60_000L      -> "Just now"
+                    diffMs < 3_600_000L   -> "${diffMs / 60_000}m ago"
+                    diffMs < 86_400_000L  -> "${diffMs / 3_600_000}h ago"
+                    diffMs < 172_800_000L -> "Yesterday"
+                    diffMs < 604_800_000L -> "${diffMs / 86_400_000}d ago"
+                    else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+                }
+            } catch (_: Exception) {
+                dateStr
+            }
         }
 
-        fun formatDate(dateStr: String?): String {
-            if (dateStr.isNullOrEmpty()) return ""
-            var date: Date? = null
-            for (parser in DATE_PARSERS) {
-                date = try { parser.parse(dateStr) } catch (_: Exception) { null }
-                if (date != null) break
-            }
-            if (date == null) return dateStr
-            val now = System.currentTimeMillis()
-            val diffMs = now - date.time
-            val diffSec = diffMs / 1000
+        fun topicEmoji(title: String?): String {
+            val t = title?.lowercase() ?: ""
             return when {
-                diffSec < 60       -> "Just now"
-                diffSec < 3600     -> "${diffSec / 60}m ago"
-                diffSec < 86400    -> "${diffSec / 3600}h ago"
-                diffSec < 172800   -> "Yesterday"
-                else               -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+                "tomato" in t || "vegetable" in t -> "🍅"
+                "weather" in t || "rain" in t     -> "🌧️"
+                "soil" in t || "npk" in t         -> "🌱"
+                "irrigation" in t || "water" in t -> "💧"
+                "fertilizer" in t || "nutrient" in t -> "🌻"
+                "pest" in t || "insect" in t      -> "🐛"
+                "wheat" in t || "rice" in t || "crop" in t -> "🌾"
+                "disease" in t || "virus" in t    -> "⚠️"
+                "image" in t                      -> "📸"
+                "audio" in t                      -> "🎤"
+                else                              -> "💬"
             }
         }
     }
@@ -81,10 +98,10 @@ internal class ConversationAdapter(
         fun bind(conversation: ConversationListItem) {
             try {
                 binding.textTitle.text = conversation.conversationTitle
-                    ?.takeIf { it.isNotEmpty() } ?: "Conversation"
-
+                    ?.takeIf { it.isNotBlank() } ?: "Conversation"
                 binding.textDate.text = formatDate(conversation.createdOn)
-                binding.textMessageCount.text = conversation.grouping?.takeIf { it.isNotEmpty() } ?: ""
+                binding.textMessageCount.text = ""
+                binding.textIconEmoji.text = topicEmoji(conversation.conversationTitle)
 
                 binding.root.setOnClickListener {
                     try {

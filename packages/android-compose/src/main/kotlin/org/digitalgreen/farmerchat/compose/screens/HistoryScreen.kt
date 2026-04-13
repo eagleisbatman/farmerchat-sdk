@@ -23,23 +23,30 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -49,6 +56,7 @@ import org.digitalgreen.farmerchat.compose.network.ConversationListItem
 import org.digitalgreen.farmerchat.compose.theme.HistoryBackground
 import org.digitalgreen.farmerchat.compose.theme.HistoryCardBg
 import org.digitalgreen.farmerchat.compose.theme.HistoryGroupLabel
+import org.digitalgreen.farmerchat.compose.theme.SdkDarkSurface2
 import org.digitalgreen.farmerchat.compose.theme.SdkGreen500
 import org.digitalgreen.farmerchat.compose.theme.SdkTextMuted
 import org.digitalgreen.farmerchat.compose.theme.SdkTextPrimary
@@ -69,12 +77,16 @@ import java.util.TimeZone
 internal fun HistoryScreen(viewModel: ChatViewModel) {
     val conversations by viewModel.conversationList.collectAsStateWithLifecycle()
     val isLoading by viewModel.historyLoading.collectAsStateWithLifecycle()
+    var searchQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         try { viewModel.loadConversationList() } catch (e: Exception) {
             Log.w("FC.History", "Load failed", e)
         }
     }
+
+    val filtered = if (searchQuery.isBlank()) conversations
+    else conversations.filter { it.conversationTitle?.contains(searchQuery, ignoreCase = true) == true }
 
     Box(modifier = Modifier.fillMaxSize().background(HistoryBackground)) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -83,8 +95,8 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color.Black.copy(alpha = 0.35f))
-                    .padding(horizontal = 4.dp, vertical = 8.dp),
+                    .background(Color(0xFF1A2318))
+                    .padding(start = 4.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 IconButton(onClick = {
@@ -108,7 +120,7 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
                 // New conversation button
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(SdkGreen500)
                         .clickable {
@@ -119,25 +131,49 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "New chat", tint = Color.White, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.Add, contentDescription = "New chat", tint = Color.White, modifier = Modifier.size(22.dp))
                 }
-                Spacer(Modifier.width(8.dp))
             }
+
+            // ── Search bar ──────────────────────────────────────────────────
+            TextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = {
+                    Text("Search conversations...", color = SdkTextMuted, fontSize = 14.sp)
+                },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = null, tint = SdkTextMuted, modifier = Modifier.size(20.dp))
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor   = SdkDarkSurface2,
+                    unfocusedContainerColor = SdkDarkSurface2,
+                    focusedTextColor        = SdkTextPrimary,
+                    unfocusedTextColor      = SdkTextPrimary,
+                    focusedIndicatorColor   = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor             = SdkGreen500,
+                ),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+            )
 
             // ── Content ──────────────────────────────────────────────────────
             when {
                 isLoading -> HistoryShimmer()
-                conversations.isEmpty() -> EmptyHistoryState()
+                filtered.isEmpty() -> EmptyHistoryState()
                 else -> {
-                    // Group by `grouping` field (Today / Yesterday / etc.) or use the string as-is
-                    val grouped = conversations.groupBy { it.grouping ?: "Older" }
+                    val grouped = filtered.groupBy { it.grouping ?: "Older" }
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 16.dp),
                     ) {
                         grouped.forEach { (group, items) ->
-                            // Section header
                             item(key = "header_$group") {
                                 Text(
                                     text = group.uppercase(),
@@ -148,7 +184,6 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
                                     modifier = Modifier.padding(start = 20.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
                                 )
                             }
-                            // Cards
                             items(items, key = { it.conversationId }) { item ->
                                 ConversationCard(
                                     item    = item,
@@ -196,7 +231,7 @@ private fun ConversationCard(item: ConversationListItem, onClick: () -> Unit) {
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text  = item.conversationTitle ?: "Conversation",
+                text  = item.conversationTitle?.takeIf { it.isNotBlank() } ?: "Conversation",
                 color = SdkTextPrimary,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
@@ -298,28 +333,33 @@ private fun HistoryShimmer() {
 private fun formatDate(dateStr: String?): String {
     if (dateStr.isNullOrBlank()) return ""
     return try {
-        val parsers = listOf(
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
-        ).onEach { it.timeZone = TimeZone.getTimeZone("UTC") }
+        // Normalize to "yyyy-MM-dd HH:mm:ss" regardless of source format:
+        //   • Replace T separator → space
+        //   • Strip timezone suffix (Z, +05:30, etc.)
+        //   • Trim sub-second precision (microseconds, milliseconds)
+        val normalized = dateStr
+            .replace('T', ' ')
+            .substringBefore('Z')
+            .substringBefore('+')
+            .trim()
+            .let { s -> if (s.length > 19) s.take(19) else s }
 
-        var parsed: Date? = null
-        for (fmt in parsers) {
-            try { parsed = fmt.parse(dateStr); break } catch (_: Exception) {}
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
+            isLenient = false
+            timeZone  = TimeZone.getTimeZone("UTC")
         }
 
-        val date = parsed ?: return dateStr
-        val diffMs = System.currentTimeMillis() - date.time
+        val date: Date = try { sdf.parse(normalized) } catch (_: Exception) { null }
+            ?: return dateStr
 
+        val diffMs = System.currentTimeMillis() - date.time
         when {
-            diffMs < 60_000L          -> "Just now"
-            diffMs < 3_600_000L       -> "${diffMs / 60_000}m ago"
-            diffMs < 86_400_000L      -> "${diffMs / 3_600_000}h ago"
-            diffMs < 172_800_000L     -> "Yesterday"
-            diffMs < 604_800_000L     -> "${diffMs / 86_400_000}d ago"
+            diffMs < 0L            -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+            diffMs < 60_000L       -> "Just now"
+            diffMs < 3_600_000L    -> "${diffMs / 60_000}m ago"
+            diffMs < 86_400_000L   -> "${diffMs / 3_600_000}h ago"
+            diffMs < 172_800_000L  -> "Yesterday"
+            diffMs < 604_800_000L  -> "${diffMs / 86_400_000}d ago"
             else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
         }
     } catch (_: Exception) {
