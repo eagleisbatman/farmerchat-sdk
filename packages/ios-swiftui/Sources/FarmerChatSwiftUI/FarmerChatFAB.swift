@@ -26,9 +26,14 @@ public struct FarmerChatFAB: View {
         }
         .padding(24)
         .sheet(isPresented: $isPresented) {
-            FarmerChat.shared.chatView()
-                .presentationDetents([.large])
-                .presentationCornerRadius(20)
+            if #available(iOS 16.4, *) {
+                FarmerChat.shared.chatView()
+                    .presentationDetents([.large])
+                    .presentationCornerRadius(20)
+            } else {
+                FarmerChat.shared.chatView()
+                    .presentationDetents([.large])
+            }
         }
     }
 }
