@@ -99,7 +99,7 @@ internal class ChatFragment : Fragment() {
         }
 
         binding.btnHistory.visibility = if (config.historyEnabled) View.VISIBLE else View.GONE
-        binding.btnLanguage?.visibility = if (config.historyEnabled) View.VISIBLE else View.GONE
+        binding.btnLanguage?.visibility = if (config.profileEnabled) View.VISIBLE else View.GONE
         binding.btnProfile.visibility = if (config.profileEnabled) View.VISIBLE else View.GONE
 
         binding.btnHistory.setOnClickListener {
