@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@color/fc_dark_surface"
+    android:paddingHorizontal="24dp"
+    android:paddingTop="16dp"
+    android:paddingBottom="24dp">
+
+    <!-- Handle bar -->
+    <View
+        android:layout_width="40dp"
+        android:layout_height="4dp"
+        android:layout_gravity="center_horizontal"
+        android:background="@color/fc_dark_text_muted"
+        android:layout_marginBottom="20dp" />
+
+    <!-- Status text -->
+    <TextView
+        android:id="@+id/tvVoiceStatus"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:text="@string/fc_voice_idle"
+        android:textColor="@color/fc_dark_text_primary"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Waveform (simple animated bars placeholder) -->
+    <LinearLayout
+        android:id="@+id/waveformContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="48dp"
+        android:layout_gravity="center_horizontal"
+        android:orientation="horizontal"
+        android:visibility="gone"
+        android:layout_marginBottom="24dp">
+        <!-- Simple static bars as placeholder; real waveform can be added later -->
+        <View android:layout_width="5dp" android:layout_height="match_parent"
+            android:background="@color/fc_green_primary" android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="30dp"
+            android:background="@color/fc_green_primary" android:layout_gravity="center_vertical"
+            android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="match_parent"
+            android:background="@color/fc_green_primary" android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="20dp"
+            android:background="@color/fc_green_primary" android:layout_gravity="center_vertical"
+            android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="match_parent"
+            android:background="@color/fc_green_primary" android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="36dp"
+            android:background="@color/fc_green_primary" android:layout_gravity="center_vertical"
+            android:layout_marginHorizontal="3dp" />
+        <View android:layout_width="5dp" android:layout_height="match_parent"
+            android:background="@color/fc_green_primary" android:layout_marginHorizontal="3dp" />
+    </LinearLayout>
+
+    <!-- Processing spinner -->
+    <ProgressBar
+        android:id="@+id/progressAudio"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="center_horizontal"
+        android:visibility="gone"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Buttons row -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <!-- Cancel (only visible during recording) -->
+        <ImageButton
+            android:id="@+id/btnCancelRecording"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
+            android:background="@drawable/fc_icon_circle_history"
+            android:src="@drawable/ic_fc_close"
+            android:contentDescription="@string/fc_cancel"
+            android:visibility="gone"
+            android:layout_marginEnd="24dp" />
+
+        <!-- Start mic (idle state) -->
+        <ImageButton
+            android:id="@+id/btnMicStart"
+            android:layout_width="72dp"
+            android:layout_height="72dp"
+            android:background="@drawable/fc_btn_green_circle"
+            android:src="@drawable/ic_fc_mic"
+            android:contentDescription="@string/fc_start_recording" />
+
+        <!-- Stop (visible during recording) -->
+        <ImageButton
+            android:id="@+id/btnStop"
+            android:layout_width="64dp"
+            android:layout_height="64dp"
+            android:background="@drawable/fc_btn_green_circle"
+            android:src="@drawable/ic_fc_stop"
+            android:contentDescription="@string/fc_stop_recording"
+            android:visibility="gone" />
+    </LinearLayout>
+
+</LinearLayout>

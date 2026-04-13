@@ -262,6 +262,43 @@ internal data class ConversationChatHistoryResponse(
     }
 }
 
+// ── Image analysis ───────────────────────────────────────────────────────────
+
+internal data class ImageAnalysisFollowUp(
+    val followUpQuestionId: String,
+    val question: String?,
+    val sequence: Int,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = ImageAnalysisFollowUp(
+            followUpQuestionId = json.optString("follow_up_question_id", ""),
+            question           = json.optStringOrNull("question"),
+            sequence           = json.optInt("sequence", 0),
+        )
+    }
+}
+
+internal data class ImageAnalysisResponse(
+    val error: Boolean,
+    val messageId: String,
+    val response: String,
+    val followUpQuestions: List<ImageAnalysisFollowUp>?,
+    val contentProviderLogo: String?,
+    val hideTtsSpeaker: Boolean?,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = ImageAnalysisResponse(
+            error              = json.optBoolean("error", false),
+            messageId          = json.optString("message_id", ""),
+            response           = json.optString("response", ""),
+            followUpQuestions  = json.optJSONArray("follow_up_questions")
+                ?.mapObjects { ImageAnalysisFollowUp.fromJson(it) },
+            contentProviderLogo = json.optStringOrNull("content_provider_logo"),
+            hideTtsSpeaker     = if (json.has("hide_tts_speaker")) json.getBoolean("hide_tts_speaker") else null,
+        )
+    }
+}
+
 // ── SSE event ────────────────────────────────────────────────────────────────
 
 internal data class SseEvent(

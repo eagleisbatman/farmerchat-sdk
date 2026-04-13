@@ -453,6 +453,173 @@ internal class ChatViewModel : ViewModel() {
         }
     }
 
+    /** Full audio → transcription → text-query flow. */
+    fun transcribeAndSendAudio(base64Audio: String, audioFormat: String = "AMR") {
+        val client = apiClient ?: run {
+            Log.e(TAG, "transcribeAndSendAudio: SDK not initialized")
+            return
+        }
+        val audioMsgId = java.util.UUID.randomUUID().toString()
+        _messages.update { msgs ->
+            msgs + ChatMessage(
+                id = audioMsgId, role = "user", text = "🎤 …",
+                timestamp = System.currentTimeMillis(), inputMethod = "audio",
+            )
+        }
+        _chatState.value = ChatUiState.Sending
+        viewModelScope.launch {
+            try {
+                ensureGuestTokensSuspend()
+                if (conversationId == null) {
+                    val conv = client.createNewConversation(config.contentProviderId)
+                    conversationId = conv.conversationId
+                }
+                val convId = conversationId!!
+                val transcribeResp = client.transcribeAudio(
+                    conversationId = convId,
+                    base64Audio = base64Audio,
+                    messageReferenceId = java.util.UUID.randomUUID().toString(),
+                    inputAudioEncodingFormat = audioFormat,
+                )
+                val transcript = if (!transcribeResp.error && !transcribeResp.heardInputQuery.isNullOrBlank())
+                    transcribeResp.heardInputQuery!!
+                else {
+                    _messages.update { msgs -> msgs.map {
+                        if (it.id == audioMsgId) it.copy(text = "⚠️ Could not understand audio") else it
+                    }}
+                    _chatState.value = ChatUiState.Idle
+                    return@launch
+                }
+                _messages.update { msgs -> msgs.map {
+                    if (it.id == audioMsgId) it.copy(text = transcript) else it
+                }}
+                // Send the transcribed text
+                sendTextInternal(
+                    client = client, text = transcript, convId = convId,
+                    triggeredInputType = "audio",
+                    transcriptionId = transcribeResp.transcriptionId,
+                )
+            } catch (e: Exception) {
+                Log.w(TAG, "transcribeAndSendAudio failed: ${e.message}")
+                _chatState.value = ChatUiState.Idle
+            }
+        }
+    }
+
+    /** Send text + base64 image using image_analysis/ endpoint. */
+    fun sendQueryWithImage(text: String, base64Image: String) {
+        val client = apiClient ?: run {
+            Log.e(TAG, "sendQueryWithImage: SDK not initialized")
+            return
+        }
+        val userMsgId = java.util.UUID.randomUUID().toString()
+        _messages.update { msgs ->
+            msgs + ChatMessage(
+                id = userMsgId, role = "user",
+                text = text.ifBlank { "📷 Analyze this image" },
+                timestamp = System.currentTimeMillis(), inputMethod = "image",
+                imageData = base64Image,
+            )
+        }
+        _chatState.value = ChatUiState.Sending
+        viewModelScope.launch {
+            try {
+                ensureGuestTokensSuspend()
+                if (conversationId == null) {
+                    val conv = client.createNewConversation(config.contentProviderId)
+                    conversationId = conv.conversationId
+                }
+                val convId = conversationId!!
+                val resp = client.imageAnalysis(
+                    conversationId = convId,
+                    base64Image = base64Image,
+                    imageName = "image_${java.util.UUID.randomUUID()}.jpg",
+                    query = text.ifBlank { null },
+                )
+                val inlineFollowUps = resp.followUpQuestions?.map { fq ->
+                    FollowUpQuestionOption(
+                        followUpQuestionId = fq.followUpQuestionId,
+                        sequence = fq.sequence,
+                        question = fq.question ?: "",
+                    )
+                } ?: emptyList()
+                val aiMsgId = java.util.UUID.randomUUID().toString()
+                _messages.update { msgs ->
+                    msgs + ChatMessage(
+                        id = aiMsgId, role = "assistant", text = resp.response,
+                        timestamp = System.currentTimeMillis(),
+                        followUps = inlineFollowUps,
+                        serverMessageId = resp.messageId,
+                    )
+                }
+                if (inlineFollowUps.isEmpty() && resp.messageId.isNotEmpty()) {
+                    fetchFollowUps(aiMsgId, resp.messageId)
+                }
+                _chatState.value = ChatUiState.Idle
+            } catch (e: Exception) {
+                Log.w(TAG, "sendQueryWithImage failed: ${e.message}")
+                _chatState.value = ChatUiState.Idle
+            }
+        }
+    }
+
+    private suspend fun sendTextInternal(
+        client: org.digitalgreen.farmerchat.views.network.ApiClient,
+        text: String, convId: String,
+        triggeredInputType: String = "text",
+        transcriptionId: String? = null,
+    ) {
+        try {
+            val msgId = java.util.UUID.randomUUID().toString()
+            val resp = client.sendTextPrompt(
+                query = text, conversationId = convId, messageId = msgId,
+                triggeredInputType = triggeredInputType,
+                transcriptionId = transcriptionId,
+            )
+            val inlineFollowUps = resp.followUpQuestions?.map { fq ->
+                FollowUpQuestionOption(
+                    followUpQuestionId = fq.followUpQuestionId,
+                    sequence = fq.sequence,
+                    question = fq.question ?: "",
+                )
+            } ?: emptyList()
+            val aiMsgId = java.util.UUID.randomUUID().toString()
+            _messages.update { msgs ->
+                msgs + ChatMessage(
+                    id = aiMsgId, role = "assistant",
+                    text = resp.response ?: resp.message ?: "",
+                    timestamp = System.currentTimeMillis(),
+                    followUps = inlineFollowUps,
+                    serverMessageId = resp.messageId,
+                )
+            }
+            if (inlineFollowUps.isEmpty() &&
+                resp.hideFollowUpQuestion != true &&
+                !resp.messageId.isNullOrEmpty()
+            ) {
+                fetchFollowUps(aiMsgId, resp.messageId!!)
+            }
+            _chatState.value = ChatUiState.Idle
+        } catch (e: Exception) {
+            Log.w(TAG, "sendTextInternal failed: ${e.message}")
+            _chatState.value = ChatUiState.Idle
+        }
+    }
+
+    private suspend fun fetchFollowUps(messageId: String, serverMsgId: String) {
+        try {
+            val client = apiClient ?: return
+            val followUps = client.getFollowUpQuestions(serverMsgId)
+            if (followUps.isNotEmpty()) {
+                _messages.update { msgs -> msgs.map { msg ->
+                    if (msg.id == messageId) msg.copy(followUps = followUps) else msg
+                }}
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "fetchFollowUps failed: ${e.message}")
+        }
+    }
+
     fun clearMessages() {
         try {
             _messages.value = emptyList()

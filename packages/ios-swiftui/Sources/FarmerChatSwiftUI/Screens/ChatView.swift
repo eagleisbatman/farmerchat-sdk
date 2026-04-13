@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - Dark palette (matches Compose / Views dark theme)
 
@@ -25,6 +26,12 @@ private var cardCornerRadius: Double {
 struct ChatView: View {
     @ObservedObject var viewModel: ChatViewModel
 
+    @State private var showVoiceOverlay = false
+    @State private var showImageSourceSheet = false
+    @State private var showCameraPicker = false
+    @State private var showGalleryPicker = false
+    @State private var selectedImageBase64: String? = nil
+
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
 
     private var isInputDisabled: Bool {
@@ -49,7 +56,7 @@ struct ChatView: View {
                 }
 
                 ZStack {
-                    if viewModel.messages.isEmpty {
+                    if viewModel.messages.isEmpty && selectedImageBase64 == nil {
                         EmptyStateArea()
                     } else {
                         MessageList(viewModel: viewModel)
@@ -66,11 +73,60 @@ struct ChatView: View {
                 }
 
                 InputBar(
-                    enabled:      !isInputDisabled && viewModel.isConnected,
-                    onSend:       { text in viewModel.sendQuery(text: text) },
-                    voiceEnabled: config.voiceInputEnabled,
-                    cameraEnabled: config.imageInputEnabled
+                    enabled:             !isInputDisabled && viewModel.isConnected,
+                    onSend:              { text in viewModel.sendQuery(text: text) },
+                    onSendWithImage:     { caption, b64 in
+                        viewModel.sendQueryWithImage(caption: caption, base64Image: b64)
+                        selectedImageBase64 = nil
+                    },
+                    selectedImageBase64: selectedImageBase64,
+                    onMicTap:            { showVoiceOverlay = true },
+                    onCameraTap:         { showImageSourceSheet = true },
+                    voiceEnabled:        config.voiceInputEnabled,
+                    cameraEnabled:       config.imageInputEnabled
                 )
+            }
+
+            // Voice overlay
+            if showVoiceOverlay {
+                VoiceInputOverlay(
+                    onConfirm: { data in
+                        showVoiceOverlay = false
+                        viewModel.transcribeAndSendAudio(audioData: data)
+                    },
+                    onCancel: { showVoiceOverlay = false }
+                )
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.25), value: showVoiceOverlay)
+            }
+        }
+        .sheet(isPresented: $showImageSourceSheet) {
+            ImageSourceSheet(
+                onCamera: {
+                    showImageSourceSheet = false
+                    showCameraPicker = true
+                },
+                onGallery: {
+                    showImageSourceSheet = false
+                    showGalleryPicker = true
+                },
+                onCancel: { showImageSourceSheet = false }
+            )
+        }
+        .sheet(isPresented: $showGalleryPicker) {
+            PHImagePicker { image in
+                showGalleryPicker = false
+                if let b64 = image?.toBase64Jpeg() {
+                    selectedImageBase64 = b64
+                }
+            }
+        }
+        .sheet(isPresented: $showCameraPicker) {
+            CameraPicker { image in
+                showCameraPicker = false
+                if let b64 = image?.toBase64Jpeg() {
+                    selectedImageBase64 = b64
+                }
             }
         }
     }

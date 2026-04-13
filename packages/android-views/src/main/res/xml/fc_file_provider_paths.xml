@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="fc_images" path="farmerchat/images/" />
+    <cache-path name="fc_audio"  path="farmerchat/audio/" />
+</paths>
