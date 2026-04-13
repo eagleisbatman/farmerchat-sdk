@@ -9,7 +9,16 @@ import {
   Platform,
   Animated,
   Easing,
+  StatusBar,
+  NativeModules,
 } from 'react-native';
+
+// Platform-specific status bar height (no extra package required)
+const STATUS_BAR_HEIGHT: number = Platform.select({
+  android: StatusBar.currentHeight ?? 0,
+  ios: (NativeModules.StatusBarManager as { HEIGHT?: number } | undefined)?.HEIGHT ?? 44,
+  default: 0,
+});
 import { useChatContext as useChat } from '../ChatProvider';
 import { useFarmerChatConfig } from '../FarmerChat';
 import { useConnectivity } from '../hooks/useConnectivity';
@@ -268,7 +277,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    paddingTop: Platform.OS === 'ios' ? 52 : 10,
+    paddingTop: STATUS_BAR_HEIGHT + 10,
     paddingBottom: 10,
     backgroundColor: DARK_TOOLBAR,
     shadowColor: '#000',

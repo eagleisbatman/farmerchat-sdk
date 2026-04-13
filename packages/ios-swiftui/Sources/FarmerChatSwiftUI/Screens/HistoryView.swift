@@ -61,7 +61,10 @@ struct HistoryView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
-                .background(historyToolbar)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(alignment: .top) {
+                    historyToolbar.ignoresSafeArea(edges: .top)
+                }
 
                 // ── Search bar ─────────────────────────────────────────────────
                 HStack(spacing: 8) {

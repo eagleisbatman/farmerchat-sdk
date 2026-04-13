@@ -8,6 +8,9 @@ import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -62,6 +65,7 @@ internal class ChatFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         try {
+            applyWindowInsets()
             setupToolbar()
             setupRecyclerView()
             setupInputBar()
@@ -69,6 +73,21 @@ internal class ChatFragment : Fragment() {
             viewModel.loadStarters()
         } catch (e: Exception) {
             Log.e(TAG, "onViewCreated failed", e)
+        }
+    }
+
+    private fun applyWindowInsets() {
+        try {
+            ViewCompat.setOnApplyWindowInsetsListener(binding.root) { _, insets ->
+                val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                // Toolbar gets top padding so its background fills behind the status bar
+                binding.toolbar.updatePadding(top = bars.top)
+                // Input bar at bottom gets navigation bar padding
+                binding.inputBar.updatePadding(bottom = bars.bottom)
+                WindowInsetsCompat.CONSUMED
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "applyWindowInsets failed", e)
         }
     }
 

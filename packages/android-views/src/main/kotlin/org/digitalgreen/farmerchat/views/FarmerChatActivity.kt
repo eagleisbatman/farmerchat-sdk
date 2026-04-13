@@ -2,6 +2,7 @@ package org.digitalgreen.farmerchat.views
 
 import android.os.Bundle
 import android.util.Log
+import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 
 /**
@@ -18,6 +19,7 @@ class FarmerChatActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
+            enableEdgeToEdge()
             super.onCreate(savedInstanceState)
             setContentView(R.layout.activity_farmerchat)
             // NavHostFragment is declared in activity_farmerchat.xml with nav_graph
