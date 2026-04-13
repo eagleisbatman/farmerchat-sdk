@@ -16,6 +16,7 @@ import org.digitalgreen.farmerchat.views.FarmerChatEvent
 import org.digitalgreen.farmerchat.views.network.ConversationHistoryItem
 import org.digitalgreen.farmerchat.views.network.ConversationListItem
 import org.digitalgreen.farmerchat.views.network.FollowUpQuestionOption
+import org.digitalgreen.farmerchat.views.network.SdkPreferences
 import org.digitalgreen.farmerchat.views.network.StarterQuestionResponse
 import org.digitalgreen.farmerchat.views.network.SupportedLanguageGroup
 import org.digitalgreen.farmerchat.views.network.TokenStore
@@ -425,6 +426,8 @@ internal class ChatViewModel : ViewModel() {
     fun completeOnboarding(language: String) {
         try {
             setLanguage(language)
+            SdkPreferences.onboardingDone = true
+            SdkPreferences.selectedLanguage = language
             _currentScreen.value = Screen.Chat
         } catch (e: Exception) {
             Log.w(TAG, "completeOnboarding failed", e)
@@ -434,6 +437,8 @@ internal class ChatViewModel : ViewModel() {
     fun skipOnboarding(language: String) {
         try {
             setLanguage(language)
+            SdkPreferences.onboardingDone = true
+            SdkPreferences.selectedLanguage = language
             _currentScreen.value = Screen.Chat
         } catch (e: Exception) {
             Log.w(TAG, "skipOnboarding failed", e)
