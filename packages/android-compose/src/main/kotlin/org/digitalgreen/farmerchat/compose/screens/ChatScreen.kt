@@ -10,6 +10,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -87,7 +88,17 @@ internal fun ChatScreen(viewModel: ChatViewModel) {
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(SdkDarkBg)) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(
+            Brush.verticalGradient(
+                colorStops = arrayOf(
+                    0.0f  to SdkDarkBg,
+                    0.45f to Color(0xFF0A1508),
+                    1.0f  to Color.Black,
+                ),
+            ),
+        ),
+    ) {
         Column(modifier = Modifier.fillMaxSize()) {
 
             ChatTopBar(

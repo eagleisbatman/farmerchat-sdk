@@ -1,11 +1,18 @@
 package org.digitalgreen.farmerchat.compose.screens
 
 import android.util.Log
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,17 +23,15 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -44,12 +49,15 @@ import org.digitalgreen.farmerchat.compose.network.ConversationListItem
 import org.digitalgreen.farmerchat.compose.theme.HistoryBackground
 import org.digitalgreen.farmerchat.compose.theme.HistoryCardBg
 import org.digitalgreen.farmerchat.compose.theme.HistoryGroupLabel
-import org.digitalgreen.farmerchat.compose.theme.SdkError
 import org.digitalgreen.farmerchat.compose.theme.SdkGreen500
+import org.digitalgreen.farmerchat.compose.theme.SdkTextMuted
 import org.digitalgreen.farmerchat.compose.theme.SdkTextPrimary
 import org.digitalgreen.farmerchat.compose.theme.SdkTextSecondary
-import org.digitalgreen.farmerchat.compose.theme.SdkTextMuted
 import org.digitalgreen.farmerchat.compose.viewmodel.ChatViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Chat history screen — dark forest theme.
@@ -60,6 +68,7 @@ import org.digitalgreen.farmerchat.compose.viewmodel.ChatViewModel
 @Composable
 internal fun HistoryScreen(viewModel: ChatViewModel) {
     val conversations by viewModel.conversationList.collectAsStateWithLifecycle()
+    val isLoading by viewModel.historyLoading.collectAsStateWithLifecycle()
 
     LaunchedEffect(Unit) {
         try { viewModel.loadConversationList() } catch (e: Exception) {
@@ -117,6 +126,7 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
 
             // ── Content ──────────────────────────────────────────────────────
             when {
+                isLoading -> HistoryShimmer()
                 conversations.isEmpty() -> EmptyHistoryState()
                 else -> {
                     // Group by `grouping` field (Today / Yesterday / etc.) or use the string as-is
@@ -124,7 +134,7 @@ internal fun HistoryScreen(viewModel: ChatViewModel) {
 
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 16.dp),
+                        contentPadding = PaddingValues(bottom = 16.dp),
                     ) {
                         grouped.forEach { (group, items) ->
                             // Section header
@@ -195,8 +205,8 @@ private fun ConversationCard(item: ConversationListItem, onClick: () -> Unit) {
             )
             Spacer(Modifier.height(3.dp))
             Text(
-                text  = item.createdOn,
-                color = SdkTextSecondary,
+                text  = formatDate(item.createdOn),
+                color = SdkTextMuted,
                 fontSize = 11.sp,
             )
         }
@@ -236,6 +246,84 @@ private fun EmptyHistoryState() {
                 textAlign = TextAlign.Center,
             )
         }
+    }
+}
+
+// ── History shimmer ────────────────────────────────────────────────────────────
+
+@Composable
+private fun HistoryShimmer() {
+    val transition = rememberInfiniteTransition(label = "historyShimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.08f,
+        targetValue  = 0.22f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(900, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "shimmerAlpha",
+    )
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        // Section header placeholder
+        item {
+            Box(
+                modifier = Modifier
+                    .padding(start = 20.dp, top = 12.dp)
+                    .width(60.dp)
+                    .height(10.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Color.White.copy(alpha = alpha)),
+            )
+        }
+        // 8 shimmer cards
+        items(8) { idx ->
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .height(72.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = alpha * (0.9f + idx * 0.012f))),
+            )
+        }
+    }
+}
+
+// ── Date formatter ─────────────────────────────────────────────────────────────
+
+private fun formatDate(dateStr: String?): String {
+    if (dateStr.isNullOrBlank()) return ""
+    return try {
+        val parsers = listOf(
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()),
+            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
+        ).onEach { it.timeZone = TimeZone.getTimeZone("UTC") }
+
+        var parsed: Date? = null
+        for (fmt in parsers) {
+            try { parsed = fmt.parse(dateStr); break } catch (_: Exception) {}
+        }
+
+        val date = parsed ?: return dateStr
+        val diffMs = System.currentTimeMillis() - date.time
+
+        when {
+            diffMs < 60_000L          -> "Just now"
+            diffMs < 3_600_000L       -> "${diffMs / 60_000}m ago"
+            diffMs < 86_400_000L      -> "${diffMs / 3_600_000}h ago"
+            diffMs < 172_800_000L     -> "Yesterday"
+            diffMs < 604_800_000L     -> "${diffMs / 86_400_000}d ago"
+            else -> SimpleDateFormat("MMM d", Locale.getDefault()).format(date)
+        }
+    } catch (_: Exception) {
+        dateStr
     }
 }
 

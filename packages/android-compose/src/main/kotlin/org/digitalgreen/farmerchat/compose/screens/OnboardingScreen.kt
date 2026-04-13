@@ -5,6 +5,14 @@ import android.content.pm.PackageManager
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,7 +21,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,7 +29,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,7 +38,6 @@ import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -337,9 +344,7 @@ private fun LanguageStep(
         }
 
         if (isLoading || languages.isEmpty()) {
-            Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = SdkGreen500)
-            }
+            LanguageShimmer()
             return@Column
         }
 
@@ -349,12 +354,44 @@ private fun LanguageStep(
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            items(languages, key = { it.id }) { language ->
+            itemsIndexed(languages, key = { _, lang -> lang.id }) { idx, language ->
                 LanguageCard(
                     language     = language,
                     isSelected   = language.code == selectedCode,
+                    animDelay    = idx * 55,
                     onSelect     = { onLangSelected(language) },
                 )
+            }
+        }
+    }
+}
+
+// ── Language shimmer ──────────────────────────────────────────────────────────
+
+@Composable
+private fun LanguageShimmer() {
+    val transition = rememberInfiniteTransition(label = "langShimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.08f,
+        targetValue  = 0.25f,
+        animationSpec = infiniteRepeatable(
+            animation  = tween(900),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "shimmerAlpha",
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        repeat(3) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                repeat(2) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(64.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(Color.White.copy(alpha = alpha)),
+                    )
+                }
             }
         }
     }
@@ -366,16 +403,37 @@ private fun LanguageStep(
 private fun LanguageCard(
     language: SupportedLanguage,
     isSelected: Boolean,
+    animDelay: Int = 0,
     onSelect: () -> Unit,
 ) {
-    val bgColor    = if (isSelected) Color(0xFF1A3A0D).copy(alpha = 0.70f)
-                     else Color.Black.copy(alpha = 0.40f)
+    val bgColor     = if (isSelected) Color(0xFF1A3A0D).copy(alpha = 0.70f)
+                      else Color.Black.copy(alpha = 0.40f)
     val borderColor = if (isSelected) SdkGreen500 else Color.White.copy(alpha = 0.12f)
     val borderWidth = if (isSelected) 1.5.dp else 1.dp
+
+    // Scale spring animation — pops slightly when selected
+    val scale by animateFloatAsState(
+        targetValue = if (isSelected) 1.04f else 1.0f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
+        label = "cardScale",
+    )
+
+    // Staggered fade-in on first composition
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(animDelay.toLong())
+        visible = true
+    }
+    val cardAlpha by animateFloatAsState(
+        targetValue = if (visible) 1f else 0f,
+        animationSpec = tween(durationMillis = 250),
+        label = "cardFadeIn",
+    )
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .graphicsLayer { scaleX = scale; scaleY = scale; this.alpha = cardAlpha }
             .clip(RoundedCornerShape(14.dp))
             .background(bgColor)
             .border(borderWidth, borderColor, RoundedCornerShape(14.dp))
