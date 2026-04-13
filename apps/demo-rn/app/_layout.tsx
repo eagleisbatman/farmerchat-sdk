@@ -8,9 +8,12 @@ export default function RootLayout() {
   return (
     <FarmerChat
       config={{
-        apiKey: API_KEY,
-        theme: { primaryColor: "#1B6B3A", secondaryColor: "#F0F7F2" },
-        headerTitle: "FarmerChat Demo",
+        apiKey:          API_KEY,
+        theme:           { primaryColor: "#1B6B3A", secondaryColor: "#F0F7F2" },
+        headerTitle:     "FarmerChat Demo",
+        weatherTemp:     "28°C ☀️",
+        weatherLocation: "Coorg, Karnataka",
+        cropName:        "Rice",
       }}
     >
       <Stack

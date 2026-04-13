@@ -53,6 +53,7 @@ dependencies {
     implementation(libs.lifecycle.runtime.compose)
     implementation(libs.activity.compose)
     implementation(libs.coroutines.android)
+    implementation("androidx.exifinterface:exifinterface:1.3.7")
 
     debugImplementation(libs.compose.ui.tooling)
 

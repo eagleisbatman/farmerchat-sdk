@@ -1,65 +1,18 @@
 import SwiftUI
-import CoreLocation
-
-// MARK: - LocationHelper
-
-private final class LocationHelper: NSObject, ObservableObject, CLLocationManagerDelegate {
-    private let manager = CLLocationManager()
-
-    @Published var authorizationStatus: CLAuthorizationStatus
-    @Published var locationObtained: Bool = false
-    @Published var locationDenied: Bool = false
-
-    override init() {
-        self.authorizationStatus = manager.authorizationStatus
-        super.init()
-        manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
-    }
-
-    func requestPermission() { manager.requestWhenInUseAuthorization() }
-    func requestLocation()   { manager.requestLocation() }
-
-    func locationManager(_ manager: CLLocationManager, didUpdateLocations _: [CLLocation]) {
-        locationObtained = true
-    }
-
-    func locationManager(_ manager: CLLocationManager, didFailWithError _: Error) {}
-
-    func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
-        authorizationStatus = manager.authorizationStatus
-        switch manager.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways:
-            requestLocation()
-        case .denied, .restricted:
-            locationDenied = true
-        default:
-            break
-        }
-    }
-}
 
 // MARK: - OnboardingView
 
 /// Two-step onboarding:
-///   Step 1 — Location permission
+///   Step 1 — Region auto-detected (IP geolocation from initialize_user). NO GPS permission.
 ///   Step 2 — Language selection
 struct OnboardingView: View {
     @ObservedObject var viewModel: ChatViewModel
-    @StateObject private var locationHelper = LocationHelper()
 
     @State private var step: Int = 1
     @State private var langLoadError: Bool = false
 
     private var themeColor: Color {
         colorFromHex(FarmerChat.getConfig().theme?.primaryColor ?? "#2E7D32")
-    }
-
-    private var hasPermission: Bool {
-        switch locationHelper.authorizationStatus {
-        case .authorizedWhenInUse, .authorizedAlways: return true
-        default: return false
-        }
     }
 
     var body: some View {
@@ -99,13 +52,7 @@ struct OnboardingView: View {
 
             // ── Content ────────────────────────────────────────────────────────
             if step == 1 {
-                LocationStep(
-                    locationHelper: locationHelper,
-                    hasPermission: hasPermission,
-                    themeColor: themeColor,
-                    onSkip: { step = 2 },
-                    onContinue: { step = 2 }
-                )
+                RegionDetectedStep(themeColor: themeColor)
             } else {
                 LanguageStep(
                     viewModel: viewModel,
@@ -154,13 +101,11 @@ struct OnboardingView: View {
         }
         .ignoresSafeArea(edges: .top)
         .onAppear {
-            // Pre-fetch immediately so languages are ready before the user reaches step 2
             if viewModel.availableLanguageGroups.isEmpty {
                 viewModel.loadLanguages()
             }
         }
         .onChange(of: step) { newStep in
-            // Retry if still empty when user actually reaches step 2
             if newStep == 2 && viewModel.availableLanguageGroups.isEmpty {
                 langLoadError = false
                 viewModel.loadLanguages()
@@ -169,14 +114,20 @@ struct OnboardingView: View {
     }
 }
 
-// MARK: - Location step
+// MARK: - Region Detected Step (replaces GPS permission step)
 
-private struct LocationStep: View {
-    @ObservedObject var locationHelper: LocationHelper
-    let hasPermission: Bool
+/// Shows the region auto-detected via IP geolocation (initialize_user).
+/// Per WEATHER_GPS_FLOW spec — no CLLocationManager / no GPS permission.
+private struct RegionDetectedStep: View {
     let themeColor: Color
-    let onSkip: () -> Void
-    let onContinue: () -> Void
+
+    private var locationLabel: String {
+        let country = TokenStore.shared.country
+        let state   = TokenStore.shared.state
+        if !state.isEmpty && !country.isEmpty { return "\(state), \(country)" }
+        if !country.isEmpty { return country }
+        return "Your Region"
+    }
 
     var body: some View {
         VStack(spacing: 20) {
@@ -191,55 +142,31 @@ private struct LocationStep: View {
                     .foregroundColor(themeColor)
             }
 
-            Text("Share Your Location")
+            Text("Your Region")
                 .font(.system(size: 20, weight: .semibold))
 
-            Text("Your location helps us provide accurate, region-specific agricultural advice for your area.")
-                .font(.system(size: 14))
+            // Show the IP-detected region as a pill badge
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(themeColor)
+                    .font(.system(size: 14))
+                Text(locationLabel)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(themeColor)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                Capsule()
+                    .fill(themeColor.opacity(0.12))
+                    .overlay(Capsule().stroke(themeColor.opacity(0.4), lineWidth: 1))
+            )
+
+            Text("Your region was automatically detected from your network. This helps us recommend farming advice relevant to your area.")
+                .font(.system(size: 13))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
-
-            if locationHelper.locationDenied {
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.circle")
-                        .foregroundColor(.orange)
-                    Text("Location denied. You can change this in Settings.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                .padding(.horizontal, 32)
-            }
-
-            if hasPermission {
-                HStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(themeColor)
-                    Text("Location permission granted")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                }
-            } else {
-                Button {
-                    locationHelper.requestPermission()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "location.fill")
-                        Text("Share Location")
-                    }
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(themeColor)
-                    .padding(.vertical, 12)
-                    .padding(.horizontal, 24)
-                    .overlay(RoundedRectangle(cornerRadius: 24).stroke(themeColor, lineWidth: 1.5))
-                }
-
-                Button(action: onSkip) {
-                    Text("Skip for now")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-            }
         }
         .padding(.horizontal, 24)
     }

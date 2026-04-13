@@ -1,10 +1,6 @@
 package org.digitalgreen.farmerchat.compose.screens
 
-import android.Manifest
-import android.content.pm.PackageManager
 import android.util.Log
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -52,69 +48,41 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.digitalgreen.farmerchat.compose.network.SupportedLanguage
+import org.digitalgreen.farmerchat.compose.network.TokenStore
 import org.digitalgreen.farmerchat.compose.theme.SdkDarkBg
 import org.digitalgreen.farmerchat.compose.theme.SdkDarkSurface
 import org.digitalgreen.farmerchat.compose.theme.SdkDarkSurface2
 import org.digitalgreen.farmerchat.compose.theme.SdkGreen500
 import org.digitalgreen.farmerchat.compose.theme.SdkTextMuted
-import org.digitalgreen.farmerchat.compose.theme.SdkTextPrimary
 import org.digitalgreen.farmerchat.compose.theme.SdkTextSecondary
 import org.digitalgreen.farmerchat.compose.viewmodel.ChatViewModel
 
 /**
  * Onboarding screen — dark theme.
  *
- * Step 1: Location permission.
- * Step 2: Language selection (2-col grid, design-guide spec).
+ * Step 1: Region detected automatically via IP-geolocation (from initialize_user response).
+ *         NO live GPS / no location permission requested per WEATHER_GPS_FLOW spec.
+ * Step 2: Language selection (2-col grid).
  */
 @Composable
 internal fun OnboardingScreen(viewModel: ChatViewModel) {
     val languageGroups by viewModel.availableLanguageGroups.collectAsStateWithLifecycle()
     val selectedLanguage by viewModel.selectedLanguage.collectAsStateWithLifecycle()
 
-    // Flatten all languages from all groups
     val languages: List<SupportedLanguage> = remember(languageGroups) {
         languageGroups.flatMap { it.languages }
     }
 
     var step by remember { mutableStateOf(1) }
-    var locationGranted by remember { mutableStateOf(false) }
     var langLoadError by remember { mutableStateOf(false) }
     var langLoading by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
-
-    val hasLocationPermission = remember {
-        ContextCompat.checkSelfPermission(
-            context,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-        ) == PackageManager.PERMISSION_GRANTED
-    }
-
-    if (hasLocationPermission && !locationGranted) {
-        locationGranted = true
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        try {
-            locationGranted = granted
-            step = 2
-        } catch (e: Exception) {
-            Log.w("FC.Onboarding", "Permission result failed", e)
-        }
-    }
-
-    /** Shared fetch helper — sets loading/error flags. */
     suspend fun fetchLanguages() {
         if (languages.isNotEmpty()) return
         langLoading = true
@@ -129,13 +97,8 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
         }
     }
 
-    // Pre-fetch languages immediately so they are ready when step 2 is shown.
     LaunchedEffect(Unit) { fetchLanguages() }
-
-    // Retry if still empty when the user actually reaches step 2.
-    LaunchedEffect(step) {
-        if (step == 2) fetchLanguages()
-    }
+    LaunchedEffect(step) { if (step == 2) fetchLanguages() }
 
     Box(
         modifier = Modifier
@@ -150,7 +113,6 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
         ) {
             Spacer(Modifier.height(56.dp))
 
-            // Logo circle
             Box(
                 modifier = Modifier
                     .size(72.dp)
@@ -177,13 +139,7 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
             Spacer(Modifier.height(28.dp))
 
             if (step == 1) {
-                LocationStep(
-                    locationGranted = locationGranted,
-                    onRequest = {
-                        try { permissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) } catch (_: Exception) {}
-                    },
-                    onSkip = { step = 2 },
-                )
+                RegionDetectedStep(onContinue = { step = 2 })
             } else {
                 LanguageStep(
                     languages      = languages,
@@ -207,7 +163,6 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
             Spacer(Modifier.weight(1f))
             Spacer(Modifier.height(12.dp))
 
-            // Continue / Get Started button
             Button(
                 onClick = {
                     try {
@@ -243,68 +198,77 @@ internal fun OnboardingScreen(viewModel: ChatViewModel) {
     }
 }
 
-// ── Location step ─────────────────────────────────────────────────────────────
+// ── Region detected step (replaces GPS permission step) ───────────────────────
 
 @Composable
-private fun LocationStep(
-    locationGranted: Boolean,
-    onRequest: () -> Unit,
-    onSkip: () -> Unit,
-) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+private fun RegionDetectedStep(onContinue: () -> Unit) {
+    // IP-geolocation from initialize_user — no GPS permission needed
+    val country = TokenStore.country.ifBlank { "your region" }
+    val state   = TokenStore.state
+    val locationLabel = if (state.isNotBlank()) "$state, $country" else country
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
         Box(
             modifier = Modifier
                 .size(80.dp)
                 .background(SdkDarkSurface, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.LocationOn, contentDescription = null, tint = SdkGreen500, modifier = Modifier.size(40.dp))
+            Icon(
+                Icons.Default.LocationOn,
+                contentDescription = null,
+                tint = SdkGreen500,
+                modifier = Modifier.size(40.dp),
+            )
         }
 
         Spacer(Modifier.height(20.dp))
 
         Text(
-            text = "Share your location so we can provide farming advice relevant to your area.",
-            color = SdkTextSecondary,
-            fontSize = 14.sp,
-            textAlign = TextAlign.Center,
-            lineHeight = 20.sp,
+            text = "Your Region",
+            color = Color.White,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
         )
 
-        Spacer(Modifier.height(24.dp))
+        Spacer(Modifier.height(8.dp))
 
-        if (locationGranted) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Default.Check, contentDescription = null, tint = SdkGreen500, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Location permission granted", color = SdkGreen500, fontSize = 14.sp)
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .clip(RoundedCornerShape(26.dp))
-                    .background(SdkDarkSurface2)
-                    .border(1.dp, SdkGreen500, RoundedCornerShape(26.dp))
-                    .clickable(onClick = onRequest),
-                contentAlignment = Alignment.Center,
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = SdkGreen500, modifier = Modifier.size(20.dp))
-                    Text("Share Location", color = Color.White, fontWeight = FontWeight.Medium)
-                }
-            }
-
-            Spacer(Modifier.height(12.dp))
-
+        // Show IP-detected region
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(20.dp))
+                .background(SdkDarkSurface2)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                Icons.Default.Check,
+                contentDescription = null,
+                tint = SdkGreen500,
+                modifier = Modifier.size(16.dp),
+            )
             Text(
-                text = "Skip for now",
-                color = SdkTextMuted,
-                fontSize = 13.sp,
-                modifier = Modifier.clickable(onClick = onSkip).padding(8.dp),
+                text = locationLabel,
+                color = SdkGreen500,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
             )
         }
+
+        Spacer(Modifier.height(16.dp))
+
+        Text(
+            text = "Your region was automatically detected from your network. " +
+                   "This helps us recommend farming advice relevant to your area.",
+            color = SdkTextSecondary,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+            lineHeight = 19.sp,
+        )
     }
 }
 
@@ -356,10 +320,10 @@ private fun LanguageStep(
         ) {
             itemsIndexed(languages, key = { _, lang -> lang.id }) { idx, language ->
                 LanguageCard(
-                    language     = language,
-                    isSelected   = language.code == selectedCode,
-                    animDelay    = idx * 55,
-                    onSelect     = { onLangSelected(language) },
+                    language  = language,
+                    isSelected = language.code == selectedCode,
+                    animDelay  = idx * 55,
+                    onSelect   = { onLangSelected(language) },
                 )
             }
         }
@@ -411,14 +375,12 @@ private fun LanguageCard(
     val borderColor = if (isSelected) SdkGreen500 else Color.White.copy(alpha = 0.12f)
     val borderWidth = if (isSelected) 1.5.dp else 1.dp
 
-    // Scale spring animation — pops slightly when selected
     val scale by animateFloatAsState(
         targetValue = if (isSelected) 1.04f else 1.0f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMedium),
         label = "cardScale",
     )
 
-    // Staggered fade-in on first composition
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         kotlinx.coroutines.delay(animDelay.toLong())

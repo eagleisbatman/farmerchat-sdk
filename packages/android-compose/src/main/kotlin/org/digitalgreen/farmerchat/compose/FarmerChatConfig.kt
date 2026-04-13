@@ -77,4 +77,29 @@ data class FarmerChatConfig(
 
     /** Maximum image upload size in bytes (default 5 MB). */
     val imageSizeLimitBytes: Long = 5_242_880L,
+
+    // ── Location / Region ─────────────────────────────────────────────────
+
+    /**
+     * ISO 3166-1 alpha-2 country code to use for language selection API.
+     * If blank, CountryDetector uses SIM / network / locale as fallback.
+     */
+    val countryCode: String = "",
+
+    /** State/province code for more localised language lists (optional). */
+    val stateCode: String? = null,
+
+    // ── Weather Widget ────────────────────────────────────────────────────
+
+    /**
+     * Primary weather text shown in the weather card (e.g., "28°C ☀️").
+     * If null the weather widget is hidden entirely.
+     */
+    val weatherTemp: String? = null,
+
+    /** Location label shown below the temperature (e.g., "Coorg, Karnataka"). */
+    val weatherLocation: String? = null,
+
+    /** Crop name shown as a green chip on the weather card (e.g., "Rice"). */
+    val cropName: String? = null,
 )

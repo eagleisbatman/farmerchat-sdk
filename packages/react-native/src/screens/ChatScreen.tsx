@@ -11,6 +11,7 @@ import {
   Easing,
   StatusBar,
   NativeModules,
+  TouchableOpacity,
 } from 'react-native';
 
 // Platform-specific status bar height (no extra package required)
@@ -184,7 +185,7 @@ export function ChatScreen() {
   const {
     chatState, messages, isConnected, errorMessage,
     sendQuery, sendFollowUp, retryLastQuery, navigateTo, setIsConnected,
-    transcribeAndSendAudio, sendQueryWithImage,
+    transcribeAndSendAudio, sendQueryWithImage, sendWeatherQuery,
   } = useChat();
   const { isConnected: netConnected } = useConnectivity();
   const flatListRef = useRef<FlatList<ChatMessage>>(null);
@@ -256,6 +257,18 @@ export function ChatScreen() {
 
       {!isConnected && <ConnectivityBanner isConnected={isConnected} />}
 
+      {/* Weather widget — shown when host app provides weatherTemp in config */}
+      {config.weatherTemp ? (
+        <WeatherWidget
+          weatherTemp={config.weatherTemp}
+          weatherLocation={config.weatherLocation}
+          cropName={config.cropName}
+          onTap={() => {
+            sendWeatherQuery('Tell me about farming advice for this weather');
+          }}
+        />
+      ) : null}
+
       <View style={styles.chatBody}>
         {messages.length === 0 && !selectedImage ? (
           <EmptyState />
@@ -306,6 +319,71 @@ export function ChatScreen() {
 }
 
 // ── Styles ────────────────────────────────────────────────────────────────────
+
+// ── WeatherWidget ─────────────────────────────────────────────────────────────
+
+interface WeatherWidgetProps {
+  weatherTemp: string;
+  weatherLocation?: string;
+  cropName?: string;
+  onTap: () => void;
+}
+
+function WeatherWidget({ weatherTemp, weatherLocation, cropName, onTap }: WeatherWidgetProps) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onPress={onTap}
+      style={weatherStyles.card}
+    >
+      <View style={{ flex: 1 }}>
+        <Text style={weatherStyles.tempText}>{weatherTemp}</Text>
+        {weatherLocation ? (
+          <Text style={weatherStyles.locationText}>📍  {weatherLocation}</Text>
+        ) : null}
+      </View>
+      {cropName ? (
+        <View style={weatherStyles.cropChip}>
+          <Text style={weatherStyles.cropText}>🌾  {cropName}</Text>
+        </View>
+      ) : null}
+    </TouchableOpacity>
+  );
+}
+
+const weatherStyles = StyleSheet.create({
+  card: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 16,
+    marginVertical: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#172213',
+    borderRadius: 14,
+  },
+  tempText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  locationText: {
+    fontSize: 12,
+    color: '#8FA88C',
+    marginTop: 2,
+  },
+  cropChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    backgroundColor: 'rgba(76, 175, 80, 0.22)',
+  },
+  cropText: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#4CAF50',
+  },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: DARK_BG },

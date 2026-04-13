@@ -55,6 +55,18 @@ struct ChatView: View {
                     ConnectivityBanner()
                 }
 
+                // Weather widget — shown when host app supplies weatherTemp in config
+                if let weatherTemp = config.weatherTemp, !weatherTemp.isEmpty {
+                    WeatherWidgetView(
+                        weatherTemp: weatherTemp,
+                        weatherLocation: config.weatherLocation,
+                        cropName: config.cropName,
+                        onTap: {
+                            viewModel.sendWeatherQuery("Tell me about farming advice for this weather")
+                        }
+                    )
+                }
+
                 ZStack {
                     if viewModel.messages.isEmpty && selectedImageBase64 == nil {
                         EmptyStateArea()
@@ -424,5 +436,55 @@ struct RoundedCornerShape2: Shape {
         path.addArc(center: CGPoint(x: rect.minX + tl, y: rect.minY + tl), radius: tl, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - WeatherWidgetView
+
+/// Weather card shown at the top of the chat when the host app provides weather data.
+/// Tapping sends a query with weather_cta_triggered = true.
+private struct WeatherWidgetView: View {
+    let weatherTemp: String
+    let weatherLocation: String?
+    let cropName: String?
+    let onTap: () -> Void
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(weatherTemp)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+
+                    if let loc = weatherLocation, !loc.isEmpty {
+                        Text("📍  \(loc)")
+                            .font(.system(size: 12))
+                            .foregroundColor(Color(red: 0.56, green: 0.66, blue: 0.55))
+                    }
+                }
+                Spacer()
+                if let crop = cropName, !crop.isEmpty {
+                    Text("🌾  \(crop)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(Color(red: 0.298, green: 0.686, blue: 0.314))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 5)
+                        .background(
+                            Capsule()
+                                .fill(Color(red: 0.298, green: 0.686, blue: 0.314).opacity(0.22))
+                        )
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(Color(red: 0.090, green: 0.133, blue: 0.075))
+            )
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+        }
+        .buttonStyle(.plain)
     }
 }

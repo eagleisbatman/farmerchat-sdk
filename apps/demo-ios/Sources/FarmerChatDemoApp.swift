@@ -9,18 +9,23 @@ struct FarmerChatDemoApp: App {
     private static let apiKey = ProcessInfo.processInfo.environment["FC_API_KEY"] ?? "demo-key"
 
     init() {
-        // Initialize the SwiftUI SDK (uses SDK default base URL).
-        // SDK.initialize() never throws — all errors are handled internally per design rule #10.
-        FarmerChatSwiftUI.FarmerChat.shared.initialize(
-            config: FarmerChatSwiftUI.FarmerChatConfig(
-                apiKey: Self.apiKey
+        // Initialize the SwiftUI SDK.
+        FarmerChatSwiftUI.FarmerChat.shared.configure(
+            FarmerChatSwiftUI.FarmerChatConfig(
+                sdkApiKey:       Self.apiKey,
+                weatherTemp:     "28°C ☀️",
+                weatherLocation: "Coorg, Karnataka",
+                cropName:        "Rice"
             )
         )
 
-        // Initialize the UIKit SDK (uses SDK default base URL).
+        // Initialize the UIKit SDK.
         FarmerChatUIKit.FarmerChat.shared.initialize(
             config: FarmerChatUIKit.FarmerChatConfig(
-                apiKey: Self.apiKey
+                apiKey:          Self.apiKey,
+                weatherTemp:     "28°C ☀️",
+                weatherLocation: "Coorg, Karnataka",
+                cropName:        "Rice"
             )
         )
     }

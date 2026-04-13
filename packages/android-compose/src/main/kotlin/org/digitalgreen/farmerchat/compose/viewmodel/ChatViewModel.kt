@@ -14,6 +14,7 @@ import org.digitalgreen.farmerchat.compose.FarmerChat
 import org.digitalgreen.farmerchat.compose.FarmerChatEvent
 import org.digitalgreen.farmerchat.compose.network.ConversationHistoryItem
 import org.digitalgreen.farmerchat.compose.network.ConversationListItem
+import org.digitalgreen.farmerchat.compose.network.CountryDetector
 import org.digitalgreen.farmerchat.compose.network.GuestApiClient
 import org.digitalgreen.farmerchat.compose.network.SdkPreferences
 import org.digitalgreen.farmerchat.compose.network.SupportedLanguage
@@ -167,10 +168,18 @@ internal class ChatViewModel : ViewModel() {
      *
      * State: Idle → Sending → Complete | Error
      */
+    /** Send a weather-context query (tapping the weather widget). Sets weather_cta_triggered = true. */
+    fun sendWeatherQuery(question: String) {
+        sendQuery(text = question, inputMethod = "text", weatherCtaTriggered = true)
+    }
+
     fun sendQuery(
         text: String,
         inputMethod: String = "text",
         imageData: String? = null,
+        weatherCtaTriggered: Boolean = false,
+        imageLatitude: String? = null,
+        imageLongitude: String? = null,
     ) {
         try {
             val client = apiClient ?: run {
@@ -223,11 +232,13 @@ internal class ChatViewModel : ViewModel() {
                     val clientMessageId = UUID.randomUUID().toString()
 
                     if (imageData != null) {
-                        // Image analysis path
+                        // Image analysis path — include GPS from EXIF if available
                         val plantix = client.imageAnalysis(
                             conversationId = convId,
                             base64Image = imageData,
                             imageName = "image_${UUID.randomUUID()}.jpg",
+                            latitude = imageLatitude,
+                            longitude = imageLongitude,
                         )
                         val localId = UUID.randomUUID().toString()
                         val inlineFollowUps = plantix.followUpQuestions?.map { fq ->
@@ -256,6 +267,7 @@ internal class ChatViewModel : ViewModel() {
                             conversationId = convId,
                             messageId = clientMessageId,
                             triggeredInputType = inputMethod,
+                            weatherCtaTriggered = weatherCtaTriggered,
                         )
                         val answerText = response.response ?: response.message ?: ""
                         val localId = UUID.randomUUID().toString()
@@ -356,8 +368,15 @@ internal class ChatViewModel : ViewModel() {
      * Callers can override by passing explicit values; empty string means "use TokenStore value".
      */
     fun loadLanguages(countryCode: String = "", state: String = "") {
-        // Resolve effective params: prefer explicit args, fall back to TokenStore geo-data
-        val effectiveCountry = countryCode.ifEmpty { TokenStore.countryCode }
+        // Priority: explicit arg → FarmerChatConfig.countryCode → TokenStore (IP geo) → CountryDetector (SIM/locale)
+        val configCountry = FarmerChat.getConfig().countryCode
+        val detectedCountry = try { CountryDetector.detect(FarmerChat.getContext()) } catch (_: Exception) { "IN" }
+        val effectiveCountry = when {
+            countryCode.isNotEmpty() -> countryCode
+            configCountry.isNotEmpty() -> configCountry
+            TokenStore.countryCode.isNotEmpty() -> TokenStore.countryCode
+            else -> detectedCountry
+        }
         val effectiveState   = state.ifEmpty { TokenStore.state }
         Log.d(TAG, "loadLanguages called — countryCode='$effectiveCountry' state='$effectiveState'" +
                 " apiClient=${if (apiClient != null) "ready" else "NULL"}")
@@ -569,8 +588,19 @@ internal class ChatViewModel : ViewModel() {
     }
 
     /** Send an image with optional text caption (calls image_analysis/ endpoint). */
-    fun sendQueryWithImage(text: String, base64Image: String) {
-        sendQuery(text = text.ifBlank { "Analyze this image" }, inputMethod = "image", imageData = base64Image)
+    fun sendQueryWithImage(
+        text: String,
+        base64Image: String,
+        latitude: String? = null,
+        longitude: String? = null,
+    ) {
+        sendQuery(
+            text = text.ifBlank { "Analyze this image" },
+            inputMethod = "image",
+            imageData = base64Image,
+            imageLatitude = latitude,
+            imageLongitude = longitude,
+        )
     }
 
     private fun updateMessageText(id: String, newText: String) {

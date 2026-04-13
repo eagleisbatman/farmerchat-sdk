@@ -75,7 +75,10 @@ class MainActivity : ComponentActivity() {
             org.digitalgreen.farmerchat.compose.FarmerChat.initialize(
                 context = applicationContext,
                 config = org.digitalgreen.farmerchat.compose.FarmerChatConfig(
-                    sdkApiKey = DEMO_API_KEY,
+                    sdkApiKey       = DEMO_API_KEY,
+                    weatherTemp     = "28°C ☀️",
+                    weatherLocation = "Coorg, Karnataka",
+                    cropName        = "Rice",
                 ),
             )
             Log.d(TAG, "Compose SDK initialized")
@@ -87,7 +90,12 @@ class MainActivity : ComponentActivity() {
         try {
             org.digitalgreen.farmerchat.views.FarmerChat.initialize(
                 context = applicationContext,
-                apiKey = DEMO_API_KEY,
+                apiKey  = DEMO_API_KEY,
+                config  = org.digitalgreen.farmerchat.views.FarmerChatConfig(
+                    weatherTemp     = "28°C ☀️",
+                    weatherLocation = "Coorg, Karnataka",
+                    cropName        = "Rice",
+                ),
             )
             Log.d(TAG, "Views SDK initialized")
         } catch (e: Exception) {
