@@ -46,13 +46,13 @@ object FarmerChat {
      * This method is idempotent — calling it more than once is a no-op.
      * All work is wrapped in try-catch so SDK initialization can never crash the host app.
      *
-     * @param context   Application context
-     * @param sdkApiKey Partner API key (`fc_live_*` or `fc_test_*`)
-     * @param config    Optional SDK configuration
+     * @param context Application context
+     * @param apiKey  Partner SDK API key (`fc_live_*` or `fc_test_*`)
+     * @param config  Optional SDK configuration
      */
     fun initialize(
         context: Context,
-        sdkApiKey: String,
+        apiKey: String,
         config: FarmerChatConfig = FarmerChatConfig(),
     ) {
         if (isInitialized) return
@@ -61,7 +61,7 @@ object FarmerChat {
             try {
                 val appCtx = context.applicationContext
                 this.appContext = appCtx
-                this.sdkApiKey = sdkApiKey
+                this.sdkApiKey = apiKey
                 this.config = config
                 this.sessionId = java.util.UUID.randomUUID().toString()
 
