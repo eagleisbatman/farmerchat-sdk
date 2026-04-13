@@ -81,6 +81,8 @@ internal final class ChatViewModel: ObservableObject {
     private var conversationId: String?
     private var lastQuery: (text: String, inputMethod: String, imageData: String?)?
     private var connectivityCancellable: AnyCancellable?
+    /// Tracks the in-flight setPreferredLanguage API task so sendQuery can await it first.
+    private var languageSyncTask: Task<Void, Never>?
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
     private var apiClient: ApiClient? { FarmerChat.shared.apiClient }
@@ -166,6 +168,13 @@ internal final class ChatViewModel: ObservableObject {
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
+
+                // Wait for any in-flight setPreferredLanguage to complete so the server
+                // has the language preference before processing the first query.
+                if let syncTask = self.languageSyncTask {
+                    await syncTask.value
+                    self.languageSyncTask = nil
+                }
 
                 // Create conversation on first message
                 if self.conversationId == nil {
@@ -455,9 +464,9 @@ internal final class ChatViewModel: ObservableObject {
         UserDefaults.standard.set(language.code, forKey: "fc_selected_language")
         emitEvent(.languageChanged(from: previous, to: language.code, timestamp: Date()))
 
-        // Sync with server so AI responses are returned in the selected language.
+        // Sync with server — sendQuery will await this task before sending the first prompt.
         guard let client = apiClient else { return }
-        Task { [weak self] in
+        languageSyncTask = Task { [weak self] in
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
@@ -507,6 +516,26 @@ internal final class ChatViewModel: ObservableObject {
                 print("[\(Self.tag)] loadLanguages: received \(groups.flatMap { $0.languages }.count) languages")
                 await MainActor.run {
                     self.availableLanguageGroups = groups
+                }
+
+                // For returning users (onboarding already done) we must re-sync the language
+                // preference to the server every session — in-memory TokenStore means a fresh
+                // userId can appear after an app restart, losing the server-side preference.
+                let onboardingDone = UserDefaults.standard.bool(forKey: "fc_onboarding_done")
+                let storedCode = UserDefaults.standard.string(forKey: "fc_selected_language") ?? ""
+                if onboardingDone, !storedCode.isEmpty,
+                   let lang = groups.flatMap({ $0.languages }).first(where: { $0.code == storedCode }) {
+                    print("[\(Self.tag)] loadLanguages: auto-syncing language '\(storedCode)' for returning user")
+                    self.languageSyncTask = Task { [weak self] in
+                        guard let self else { return }
+                        do {
+                            let userId = await TokenStore.shared.userId
+                            try await client.setPreferredLanguage(userId: userId, languageId: String(lang.id))
+                            print("[\(Self.tag)] loadLanguages: language auto-sync succeeded (languageId=\(lang.id))")
+                        } catch {
+                            print("[\(Self.tag)] loadLanguages: language auto-sync failed: \(error)")
+                        }
+                    }
                 }
             } catch {
                 print("[\(Self.tag)] loadLanguages FAILED: \(error)")
