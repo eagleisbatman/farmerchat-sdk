@@ -166,13 +166,13 @@ public struct SupportedLanguage: Decodable, Identifiable, Equatable {
 }
 
 public struct SupportedLanguageGroup: Decodable {
-    public let countryName: String?
-    public let countryCode: String?
+    public let displayName: String?
+    public let flag: String?
     public let languages: [SupportedLanguage]
 
     enum CodingKeys: String, CodingKey {
-        case countryName = "country_name"
-        case countryCode = "country_code"
+        case displayName = "displayName"
+        case flag = "flag"
         case languages
     }
 }

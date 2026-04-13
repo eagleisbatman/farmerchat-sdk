@@ -271,7 +271,8 @@ export function useChat(): UseChatReturn {
   const sendFollowUp = useCallback(async (text: string, followUpQuestionId?: string) => {
     const client = apiClientRef.current;
     if (client && followUpQuestionId) {
-      void client.trackFollowUpClick({ follow_up_question: followUpQuestionId }).catch(() => {});
+      // API expects the question text in follow_up_question, not the id
+      void client.trackFollowUpClick({ follow_up_question: text }).catch(() => {});
     }
     await sendQuery(text, 'follow_up');
   }, [sendQuery]);
@@ -317,6 +318,7 @@ export function useChat(): UseChatReturn {
       setConversationList(list);
     } catch (err) {
       console.error('[FC.useChat] loadConversationList FAILED:', err);
+      throw err;
     }
   }, [ensureTokens]);
 

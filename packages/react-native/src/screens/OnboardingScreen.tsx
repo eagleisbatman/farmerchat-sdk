@@ -82,6 +82,7 @@ export function OnboardingScreen() {
   const [locationError, setLocationError] = useState<string | null>(null);
   const [languagesLoading, setLanguagesLoading] = useState(false);
   const [langLoadError, setLangLoadError] = useState(false);
+  const [hasPickedLanguage, setHasPickedLanguage] = useState(false);
 
   const languages: SupportedLanguage[] = availableLanguageGroups.flatMap(g => g.languages);
 
@@ -261,7 +262,7 @@ export function OnboardingScreen() {
               language={lang}
               isSelected={selectedLanguage === lang.code}
               primaryColor={primaryColor}
-              onSelect={() => setLanguage(lang.code)}
+              onSelect={() => { setLanguage(lang.code); setHasPickedLanguage(true); }}
             />
           ))}
         </ScrollView>
@@ -273,10 +274,10 @@ export function OnboardingScreen() {
           style={[
             styles.primaryBtn,
             { backgroundColor: primaryColor },
-            !selectedLanguage && styles.primaryBtnDisabled,
+            !hasPickedLanguage && styles.primaryBtnDisabled,
           ]}
           onPress={handleGetStarted}
-          disabled={!selectedLanguage}
+          disabled={!hasPickedLanguage}
           accessibilityRole="button"
         >
           <Text style={styles.primaryBtnText}>Get Started</Text>
