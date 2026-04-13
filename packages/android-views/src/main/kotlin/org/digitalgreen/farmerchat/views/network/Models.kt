@@ -203,6 +203,65 @@ internal data class StarterQuestionResponse(
     }
 }
 
+// ── Conversation chat history ─────────────────────────────────────────────────
+
+internal data class ConversationHistoryQuestion(
+    val followUpQuestionId: String,
+    val question: String,
+    val sequence: Int,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = ConversationHistoryQuestion(
+            followUpQuestionId = json.optString("follow_up_question_id", ""),
+            question           = json.optString("question", ""),
+            sequence           = json.optInt("sequence", 0),
+        )
+    }
+}
+
+internal data class ConversationHistoryItem(
+    val messageTypeId: Int,
+    val messageType: String,
+    val messageId: String,
+    val queryText: String?,
+    val heardQueryText: String?,
+    val responseText: String?,
+    val questions: List<ConversationHistoryQuestion>?,
+    val queryMediaFileUrl: String?,
+    val contentProviderLogo: String?,
+    val hideTtsSpeaker: Boolean?,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = ConversationHistoryItem(
+            messageTypeId      = json.optInt("message_type_id", 0),
+            messageType        = json.optString("message_type", ""),
+            messageId          = json.optString("message_id", ""),
+            queryText          = json.optString("query_text", null),
+            heardQueryText     = json.optString("heard_query_text", null),
+            responseText       = json.optString("response_text", null),
+            questions          = json.optJSONArray("questions")
+                ?.mapObjects { ConversationHistoryQuestion.fromJson(it) },
+            queryMediaFileUrl  = json.optString("query_media_file_url", null),
+            contentProviderLogo = json.optString("content_provider_logo", null),
+            hideTtsSpeaker     = if (json.has("hide_tts_speaker")) json.optBoolean("hide_tts_speaker") else null,
+        )
+    }
+}
+
+internal data class ConversationChatHistoryResponse(
+    val conversationId: String,
+    val data: List<ConversationHistoryItem>,
+) {
+    companion object {
+        fun fromJson(json: JSONObject) = ConversationChatHistoryResponse(
+            conversationId = json.optString("conversation_id", ""),
+            data           = json.optJSONArray("data")
+                ?.mapObjects { ConversationHistoryItem.fromJson(it) }
+                ?: emptyList(),
+        )
+    }
+}
+
 // ── SSE event ────────────────────────────────────────────────────────────────
 
 internal data class SseEvent(

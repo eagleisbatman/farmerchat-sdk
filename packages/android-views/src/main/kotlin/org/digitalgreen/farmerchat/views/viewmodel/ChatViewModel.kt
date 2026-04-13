@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.digitalgreen.farmerchat.views.FarmerChat
 import org.digitalgreen.farmerchat.views.FarmerChatEvent
+import org.digitalgreen.farmerchat.views.network.ConversationHistoryItem
 import org.digitalgreen.farmerchat.views.network.ConversationListItem
 import org.digitalgreen.farmerchat.views.network.FollowUpQuestionOption
 import org.digitalgreen.farmerchat.views.network.StarterQuestionResponse
@@ -307,13 +308,67 @@ internal class ChatViewModel : ViewModel() {
     }
 
     fun loadConversation(conversation: ConversationListItem) {
-        try {
-            _messages.value = emptyList()
-            _chatState.value = ChatUiState.Idle
-            conversationId = conversation.conversationId
-            _currentScreen.value = Screen.Chat
-        } catch (e: Exception) {
-            Log.w(TAG, "loadConversation failed", e)
+        viewModelScope.launch {
+            try {
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadConversation: SDK not initialized")
+                    return@launch
+                }
+                conversationId = conversation.conversationId
+                _messages.value = emptyList()
+                _chatState.value = ChatUiState.Idle
+                ensureGuestTokensSuspend()
+                val history = client.getChatHistory(conversation.conversationId)
+                val msgs = history.data.mapNotNull { historyItemToChatMessage(it) }
+                _messages.value = msgs
+            } catch (e: Exception) {
+                Log.w(TAG, "loadConversation failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun historyItemToChatMessage(item: ConversationHistoryItem): ChatMessage? {
+        return when (item.messageTypeId) {
+            1 -> ChatMessage(
+                id = item.messageId,
+                role = "user",
+                text = item.queryText ?: "",
+                timestamp = System.currentTimeMillis(),
+                inputMethod = "text",
+                serverMessageId = item.messageId,
+            )
+            2 -> ChatMessage(
+                id = item.messageId,
+                role = "user",
+                text = item.heardQueryText ?: item.queryText ?: "",
+                timestamp = System.currentTimeMillis(),
+                inputMethod = "audio",
+                serverMessageId = item.messageId,
+            )
+            11 -> ChatMessage(
+                id = item.messageId,
+                role = "user",
+                text = item.queryText ?: "",
+                timestamp = System.currentTimeMillis(),
+                inputMethod = "image",
+                serverMessageId = item.messageId,
+            )
+            3 -> ChatMessage(
+                id = item.messageId,
+                role = "assistant",
+                text = item.responseText ?: "",
+                timestamp = System.currentTimeMillis(),
+                followUps = item.questions?.map { q ->
+                    FollowUpQuestionOption(
+                        followUpQuestionId = q.followUpQuestionId,
+                        sequence = q.sequence,
+                        question = q.question,
+                    )
+                } ?: emptyList(),
+                serverMessageId = item.messageId,
+            )
+            7 -> null
+            else -> null
         }
     }
 

@@ -252,6 +252,20 @@ internal class ApiClient(
         }
     }
 
+    suspend fun getChatHistory(
+        conversationId: String,
+        page: Int = 1,
+    ): ConversationChatHistoryResponse {
+        return try {
+            val params = mapOf("conversation_id" to conversationId, "page" to page.toString())
+            val text = getJson(EP_CHAT_HISTORY, params)
+            ConversationChatHistoryResponse.fromJson(JSONObject(text))
+        } catch (e: Exception) {
+            Log.w(TAG, "getChatHistory failed: ${e.message}")
+            throw e
+        }
+    }
+
     // ── Public API — Languages ────────────────────────────────────────────────
 
     suspend fun getSupportedLanguages(

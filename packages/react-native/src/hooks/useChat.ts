@@ -330,7 +330,9 @@ export function useChat(): UseChatReturn {
       const history = await client.getChatHistory(item.conversation_id);
       conversationIdRef.current = item.conversation_id;
 
-      const msgs: ChatMessage[] = history.data.compactMap(historyItemToMessage);
+      const msgs: ChatMessage[] = history.data
+        .map(historyItemToMessage)
+        .filter((m): m is ChatMessage => m !== null);
       setMessages(msgs);
       setCurrentScreen('chat');
     } catch {
