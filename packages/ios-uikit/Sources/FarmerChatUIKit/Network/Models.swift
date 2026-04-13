@@ -65,6 +65,10 @@ struct TextPromptResponse: Decodable {
     let translatedResponse: String?
     let followUpQuestions: [FollowUpQuestionOption]?
     let sectionMessageId: String?
+    let contentProviderLogo: String?
+    let hideFollowUpQuestion: Bool?
+    let hideTtsSpeaker: Bool?
+    let points: Int?
 }
 
 // MARK: - Image analysis

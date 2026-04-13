@@ -116,6 +116,12 @@ internal final class ApiClient {
             let body = String(data: data, encoding: .utf8)
             throw NetworkError.serverError(http.statusCode, body)
         }
+
+        // Debug: log raw response body so field-mapping issues are visible in Xcode console
+        if let rawBody = String(data: data, encoding: .utf8) {
+            Self.logger.debug("← POST \(url.lastPathComponent) raw: \(rawBody)")
+        }
+
         return try decoder.decode(Res.self, from: data)
     }
 
