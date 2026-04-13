@@ -380,7 +380,7 @@ internal final class ChatViewModel: ObservableObject {
                 self.availableLanguages = allLanguages
 
                 // For returning users, re-sync the saved language preference every session.
-                let onboardingDone = SdkPreferences.onboardingDone
+                let onboardingDone = SdkPreferences.isOnboardingDone
                 let storedCode = SdkPreferences.selectedLanguage ?? ""
                 if onboardingDone, !storedCode.isEmpty,
                    let lang = allLanguages.first(where: { $0.code == storedCode }) {
