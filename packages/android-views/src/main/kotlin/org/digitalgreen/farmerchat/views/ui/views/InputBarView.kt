@@ -39,11 +39,20 @@ internal class InputBarView @JvmOverloads constructor(
     /** Send button. */
     val btnSend: ImageButton? get() = binding?.btnSend
 
+    /** Container for the send button (has circular green bg + elevation). */
+    val btnSendContainer: android.widget.FrameLayout? get() = binding?.btnSendContainer
+
     /** Voice input button. */
     val btnVoice: ImageButton? get() = binding?.btnVoice
 
+    /** Container for the voice button (has circular green bg + elevation). */
+    val btnVoiceContainer: android.widget.FrameLayout? get() = binding?.btnVoiceContainer
+
     /** Camera/image input button. */
     val btnCamera: ImageButton? get() = binding?.btnCamera
+
+    /** Container for the camera button (has dark circular bg). */
+    val btnCameraContainer: android.widget.FrameLayout? get() = binding?.btnCameraContainer
 
     init {
         binding = try {
