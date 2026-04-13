@@ -5,41 +5,112 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/fc_background">
+    android:background="@color/fc_dark_bg"
+    android:fitsSystemWindows="true">
 
     <!-- Toolbar -->
     <LinearLayout
         android:id="@+id/toolbar"
         android:layout_width="0dp"
-        android:layout_height="@dimen/fc_toolbar_height"
+        android:layout_height="wrap_content"
+        android:minHeight="56dp"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="@dimen/fc_padding_small"
-        android:background="@color/fc_primary"
-        android:elevation="@dimen/fc_elevation_small"
+        android:paddingStart="4dp"
+        android:paddingEnd="12dp"
+        android:paddingVertical="8dp"
+        android:background="@color/fc_dark_toolbar"
+        android:elevation="4dp"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
         <ImageButton
             android:id="@+id/btn_back"
-            android:layout_width="@dimen/fc_icon_button_size"
-            android:layout_height="@dimen/fc_icon_button_size"
-            android:src="@android:drawable/ic_menu_revert"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_fc_arrow_back"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/fc_back"
-            app:tint="@color/fc_on_primary" />
+            app:tint="@color/fc_dark_text_primary" />
 
-        <TextView
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/fc_history"
-            android:textColor="@color/fc_on_primary"
-            android:textSize="@dimen/fc_text_title"
-            android:textStyle="bold"
-            android:layout_marginStart="@dimen/fc_padding_small" />
+            android:orientation="vertical"
+            android:layout_marginStart="4dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/fc_history"
+                android:textColor="@color/fc_dark_text_primary"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Your farming conversations"
+                android:textColor="@color/fc_dark_text_secondary"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- New conversation button -->
+        <FrameLayout
+            android:id="@+id/btn_new_conversation"
+            android:layout_width="38dp"
+            android:layout_height="38dp"
+            android:background="@drawable/fc_mic_button_bg"
+            android:foreground="?attr/selectableItemBackgroundBorderless"
+            android:clickable="true"
+            android:focusable="true"
+            android:contentDescription="New conversation">
+
+            <ImageView
+                android:layout_width="22dp"
+                android:layout_height="22dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_fc_add"
+                app:tint="@android:color/white" />
+        </FrameLayout>
+
     </LinearLayout>
+
+    <!-- Search bar -->
+    <com.google.android.material.textfield.TextInputLayout
+        android:id="@+id/search_layout"
+        style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:hint="Search conversations..."
+        app:boxBackgroundColor="@color/fc_dark_surface2"
+        app:boxStrokeColor="@color/fc_dark_surface2"
+        app:hintTextColor="@color/fc_dark_text_muted"
+        app:startIconDrawable="@drawable/ic_fc_search"
+        app:startIconTint="@color/fc_dark_text_muted"
+        app:boxCornerRadiusTopStart="12dp"
+        app:boxCornerRadiusTopEnd="12dp"
+        app:boxCornerRadiusBottomStart="12dp"
+        app:boxCornerRadiusBottomEnd="12dp"
+        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/edit_search"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/fc_dark_text_primary"
+            android:textColorHint="@color/fc_dark_text_muted"
+            android:inputType="text"
+            android:imeOptions="actionSearch"
+            android:singleLine="true" />
+
+    </com.google.android.material.textfield.TextInputLayout>
 
     <!-- Loading indicator -->
     <com.google.android.material.progressindicator.CircularProgressIndicator
@@ -48,8 +119,8 @@
         android:layout_height="wrap_content"
         android:indeterminate="true"
         android:visibility="gone"
-        app:indicatorColor="@color/fc_primary"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:indicatorColor="@color/fc_mic_button"
+        app:layout_constraintTop_toBottomOf="@id/search_layout"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
@@ -60,12 +131,15 @@
         android:id="@+id/recycler_conversations"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:padding="@dimen/fc_padding_medium"
+        android:paddingTop="4dp"
+        android:paddingBottom="16dp"
         android:clipToPadding="false"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/search_layout"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible" />
 
     <!-- Empty state -->
     <LinearLayout
@@ -75,18 +149,42 @@
         android:orientation="vertical"
         android:gravity="center"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        android:padding="32dp"
+        app:layout_constraintTop_toBottomOf="@id/search_layout"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
         tools:visibility="gone">
 
+        <FrameLayout
+            android:layout_width="90dp"
+            android:layout_height="90dp"
+            android:background="@drawable/fc_icon_circle_history">
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:text="💬"
+                android:textSize="40sp" />
+        </FrameLayout>
+
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="@string/fc_no_history"
-            android:textSize="@dimen/fc_text_body"
-            android:textColor="@color/fc_text_secondary" />
+            android:text="No conversations yet"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/fc_dark_text_primary"
+            android:layout_marginTop="16dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Your past conversations will appear here"
+            android:textSize="14sp"
+            android:textColor="@color/fc_dark_text_secondary"
+            android:gravity="center"
+            android:layout_marginTop="8dp" />
     </LinearLayout>
 
     <!-- Error state -->
@@ -97,18 +195,18 @@
         android:orientation="vertical"
         android:gravity="center"
         android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintTop_toBottomOf="@id/search_layout"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        tools:visibility="gone">
+        app:layout_constraintEnd_toEndOf="parent">
 
         <TextView
             android:id="@+id/error_text"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="@dimen/fc_text_body"
+            android:textSize="14sp"
             android:textColor="@color/fc_error"
+            android:gravity="center"
             tools:text="Failed to load history" />
 
         <com.google.android.material.button.MaterialButton
@@ -117,8 +215,8 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="@string/fc_retry"
-            android:textColor="@color/fc_primary"
-            android:layout_marginTop="@dimen/fc_padding_small" />
+            android:textColor="@color/fc_mic_button"
+            android:layout_marginTop="8dp" />
     </LinearLayout>
 
 </androidx.constraintlayout.widget.ConstraintLayout>
