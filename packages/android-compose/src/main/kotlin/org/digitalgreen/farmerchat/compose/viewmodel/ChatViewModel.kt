@@ -506,8 +506,11 @@ internal class ChatViewModel : ViewModel() {
         // Reverse so oldest section is shown first (top of screen)
         val ordered = sections.reversed().flatten()
 
-        // Map to ChatMessage; attach type-7 follow-ups to preceding AI bubble
+        // Map to ChatMessage; attach type-7 follow-ups to preceding AI bubble.
+        // Guard against duplicate messageIds returned by the server — LazyColumn requires unique keys.
         val result = mutableListOf<ChatMessage>()
+        val seenIds = mutableSetOf<String>()
+        var itemIndex = 0
         for (item in ordered) {
             when (item.messageTypeId) {
                 7 -> {
@@ -520,8 +523,14 @@ internal class ChatViewModel : ViewModel() {
                         result[lastAiIdx] = result[lastAiIdx].copy(followUps = mapped)
                     }
                 }
-                else -> historyItemToChatMessage(item)?.let { result.add(it) }
+                else -> {
+                    val msg = historyItemToChatMessage(item) ?: continue
+                    // Ensure the id is unique — append index suffix when the server returns a dupe
+                    val uniqueId = if (seenIds.add(msg.id)) msg.id else "${msg.id}_$itemIndex"
+                    result.add(if (uniqueId != msg.id) msg.copy(id = uniqueId) else msg)
+                }
             }
+            itemIndex++
         }
         return result
     }
