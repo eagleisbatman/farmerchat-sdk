@@ -252,15 +252,22 @@ internal final class ChatViewModel: ObservableObject {
     // MARK: - History
 
     func loadConversationList() {
+        print("[\(Self.tag)] loadConversationList called — apiClient=\(apiClient != nil ? "ready" : "NIL")")
+        guard apiClient != nil else {
+            print("[\(Self.tag)] loadConversationList: SDK not initialized")
+            return
+        }
         Task { [weak self] in
             guard let self, let client = self.apiClient else { return }
             do {
                 await self.ensureGuestTokens()
                 let userId = await TokenStore.shared.userId
+                print("[\(Self.tag)] loadConversationList: fetching for userId=\(userId)")
                 let list = try await client.fetchConversationList(userId: userId)
+                print("[\(Self.tag)] loadConversationList: received \(list.count) conversations")
                 self.conversationList = list
             } catch {
-                print("[\(Self.tag)] loadConversationList failed: \(error)")
+                print("[\(Self.tag)] loadConversationList FAILED: \(error)")
             }
         }
     }
@@ -326,17 +333,23 @@ internal final class ChatViewModel: ObservableObject {
 
     /// Fetch supported languages from the server and update [availableLanguageGroups].
     func loadLanguages() {
-        guard let client = apiClient else { return }
+        guard let client = apiClient else {
+            print("[\(Self.tag)] loadLanguages: SDK not initialized — call FarmerChat.configure() first")
+            return
+        }
+        print("[\(Self.tag)] loadLanguages called")
         Task { [weak self] in
             guard let self else { return }
             do {
-                await self.ensureGuestTokens()          // tokens must exist before the call
+                await self.ensureGuestTokens()
+                print("[\(Self.tag)] loadLanguages: guest tokens ready, fetching…")
                 let groups = try await client.getSupportedLanguages()
+                print("[\(Self.tag)] loadLanguages: received \(groups.flatMap { $0.languages }.count) languages")
                 await MainActor.run {
                     self.availableLanguageGroups = groups
                 }
             } catch {
-                print("[\(Self.tag)] loadLanguages failed: \(error)")
+                print("[\(Self.tag)] loadLanguages FAILED: \(error)")
             }
         }
     }

@@ -305,13 +305,18 @@ export function useChat(): UseChatReturn {
 
   const loadConversationList = useCallback(async () => {
     const client = apiClientRef.current;
-    if (!client) return;
+    if (!client) {
+      console.warn('[FC.useChat] loadConversationList: SDK not configured');
+      return;
+    }
+    console.log('[FC.useChat] loadConversationList: fetching…');
     try {
       await ensureTokens();
       const list = await client.getConversationList();
+      console.log('[FC.useChat] loadConversationList: received', list.length, 'conversations');
       setConversationList(list);
-    } catch {
-      // Silently fail — history is optional
+    } catch (err) {
+      console.error('[FC.useChat] loadConversationList FAILED:', err);
     }
   }, [ensureTokens]);
 
@@ -388,13 +393,19 @@ export function useChat(): UseChatReturn {
 
   const loadLanguages = useCallback(async () => {
     const client = apiClientRef.current;
-    if (!client) return;
+    if (!client) {
+      console.warn('[FC.useChat] loadLanguages: SDK not configured — call FarmerChatSDK.configure() first');
+      return;
+    }
+    console.log('[FC.useChat] loadLanguages: ensuring tokens…');
     try {
-      await ensureTokens();           // tokens must be ready before the languages API call
+      await ensureTokens();
+      console.log('[FC.useChat] loadLanguages: fetching supported languages…');
       const groups = await client.getSupportedLanguages();
+      console.log('[FC.useChat] loadLanguages: received', groups.flatMap(g => g.languages).length, 'languages');
       setAvailableLanguageGroups(groups);
-    } catch {
-      // Non-fatal — language list will remain empty; OnboardingScreen handles this gracefully
+    } catch (err) {
+      console.error('[FC.useChat] loadLanguages FAILED:', err);
     }
   }, [ensureTokens]);
 

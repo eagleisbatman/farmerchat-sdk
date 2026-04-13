@@ -349,23 +349,37 @@ internal class ChatViewModel : ViewModel() {
 
     /** Fetch supported languages grouped by country. */
     fun loadLanguages(countryCode: String = "", state: String = "") {
+        Log.d(TAG, "loadLanguages called — apiClient=${if (apiClient != null) "ready" else "NULL"}")
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
-                ensureGuestTokensSuspend()      // tokens must be ready before any API call
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadLanguages: SDK not initialized — call FarmerChat.initialize() first")
+                    return@launch
+                }
+                Log.d(TAG, "loadLanguages: ensuring guest tokens…")
+                ensureGuestTokensSuspend()
+                Log.d(TAG, "loadLanguages: calling GET api/language/v2/country_wise_supported_languages/")
                 val groups = client.getSupportedLanguages(countryCode, state)
+                Log.d(TAG, "loadLanguages: received ${groups.sumOf { it.languages.size }} languages in ${groups.size} groups")
                 _availableLanguageGroups.value = groups
             } catch (e: Exception) {
-                Log.w(TAG, "loadLanguages failed: ${e.message}")
+                Log.e(TAG, "loadLanguages failed: ${e.message}", e)
             }
         }
     }
 
     /** Set preferred language on the server and locally. */
     fun setPreferredLanguage(language: SupportedLanguage) {
+        Log.d(TAG, "setPreferredLanguage: ${language.code}")
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
+                val client = apiClient ?: run {
+                    Log.e(TAG, "setPreferredLanguage: SDK not initialized")
+                    // Still apply locally so UI updates immediately
+                    _selectedLanguage.value = language.code
+                    SdkPreferences.selectedLanguage = language.code
+                    return@launch
+                }
                 client.setPreferredLanguage(
                     userId = TokenStore.userId,
                     languageId = language.id.toString(),
@@ -381,6 +395,9 @@ internal class ChatViewModel : ViewModel() {
                 )
             } catch (e: Exception) {
                 Log.w(TAG, "setPreferredLanguage failed: ${e.message}")
+                // Still apply locally so UI updates even if server sync fails
+                _selectedLanguage.value = language.code
+                SdkPreferences.selectedLanguage = language.code
             }
         }
     }
@@ -389,14 +406,19 @@ internal class ChatViewModel : ViewModel() {
 
     /** Load the user's conversation list. */
     fun loadConversationList() {
+        Log.d(TAG, "loadConversationList called — apiClient=${if (apiClient != null) "ready" else "NULL"}")
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadConversationList: SDK not initialized")
+                    return@launch
+                }
                 ensureGuestTokensSuspend()
                 val list = client.getConversationList(userId = TokenStore.userId)
+                Log.d(TAG, "loadConversationList: received ${list.size} conversations")
                 _conversationList.value = list
             } catch (e: Exception) {
-                Log.w(TAG, "loadConversationList failed: ${e.message}")
+                Log.e(TAG, "loadConversationList failed: ${e.message}", e)
             }
         }
     }
@@ -406,9 +428,13 @@ internal class ChatViewModel : ViewModel() {
      * Replaces current messages and sets the active conversation ID.
      */
     fun loadConversation(conversationListItem: ConversationListItem) {
+        Log.d(TAG, "loadConversation: ${conversationListItem.conversationId}")
         viewModelScope.launch {
             try {
-                val client = apiClient ?: return@launch
+                val client = apiClient ?: run {
+                    Log.e(TAG, "loadConversation: SDK not initialized")
+                    return@launch
+                }
                 ensureGuestTokensSuspend()
                 val history = client.getChatHistory(conversationListItem.conversationId)
                 conversationId = conversationListItem.conversationId

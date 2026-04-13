@@ -81,16 +81,35 @@ export function OnboardingScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [languagesLoading, setLanguagesLoading] = useState(false);
+  const [langLoadError, setLangLoadError] = useState(false);
 
   const languages: SupportedLanguage[] = availableLanguageGroups.flatMap(g => g.languages);
 
-  // Fetch languages when entering step 2
-  useEffect(() => {
-    if (step === 'language' && availableLanguageGroups.length === 0) {
-      setLanguagesLoading(true);
-      loadLanguages().finally(() => setLanguagesLoading(false));
+  const fetchLanguages = useCallback(async () => {
+    if (languages.length > 0) return;
+    setLanguagesLoading(true);
+    setLangLoadError(false);
+    try {
+      await loadLanguages();
+    } catch {
+      setLangLoadError(true);
+    } finally {
+      setLanguagesLoading(false);
     }
-  }, [step, availableLanguageGroups.length, loadLanguages]);
+  }, [languages.length, loadLanguages]);
+
+  // Pre-fetch languages immediately on mount so they are ready for step 2
+  useEffect(() => {
+    void fetchLanguages();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Retry if still empty when entering step 2
+  useEffect(() => {
+    if (step === 'language' && languages.length === 0) {
+      void fetchLanguages();
+    }
+  }, [step, fetchLanguages, languages.length]);
 
   const handleShareLocation = useCallback(async () => {
     try {
@@ -217,7 +236,17 @@ export function OnboardingScreen() {
       <Text style={[styles.langLabel, { color: primaryColor }]}>SELECT YOUR LANGUAGE</Text>
 
       {/* Language grid */}
-      {languagesLoading ? (
+      {langLoadError && languages.length === 0 ? (
+        <View style={styles.loadingBox}>
+          <Text style={styles.errorText}>Could not load languages.</Text>
+          <Pressable
+            onPress={() => void fetchLanguages()}
+            style={[styles.retryBtn, { borderColor: primaryColor }]}
+          >
+            <Text style={[styles.retryBtnText, { color: primaryColor }]}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : languagesLoading || languages.length === 0 ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator color={primaryColor} size="large" />
         </View>
@@ -333,7 +362,15 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 12,
   },
+  retryBtn: {
+    borderWidth: 1.5,
+    borderRadius: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 24,
+  },
+  retryBtnText: { fontSize: 14, fontWeight: '600' },
   langList: {
     paddingHorizontal: 16,
     paddingVertical: 8,
