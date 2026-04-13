@@ -230,8 +230,9 @@ internal final class ChatViewModel: ObservableObject {
 
     /// Send a follow-up question.
     func sendFollowUp(text: String, followUpId: String? = nil) {
-        if let id = followUpId {
-            Task { try? await apiClient?.trackFollowUpClick(followUpQuestion: id) }
+        if followUpId != nil {
+            // pass the question text (not the id) as the API expects the question string
+            Task { try? await apiClient?.trackFollowUpClick(followUpQuestion: text) }
         }
         sendQuery(text: text, inputMethod: "follow_up")
     }

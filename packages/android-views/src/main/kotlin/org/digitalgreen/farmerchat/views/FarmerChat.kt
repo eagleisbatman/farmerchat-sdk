@@ -140,7 +140,8 @@ object FarmerChat {
                 connectivityMonitor = null
                 crashBridge = null
                 config = null
-                apiKey = null
+                sdkApiKey = null
+                guestApiClient = null
                 appContext = null
                 sessionId = null
                 eventCallback = null

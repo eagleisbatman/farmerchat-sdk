@@ -72,9 +72,9 @@ internal class GuestApiClient(private val baseUrl: String) {
                     userId = json.optString("user_id", ""),
                     createdNow = json.optBoolean("created_now", false),
                     showCropsLivestocks = json.optBoolean("show_crops_livestocks", false),
-                    countryCode = json.optString("country_code", null),
-                    country = json.optString("country", null),
-                    state = json.optString("state", null),
+                    countryCode = if (json.isNull("country_code")) null else json.optString("country_code", ""),
+                    country = if (json.isNull("country")) null else json.optString("country", ""),
+                    state = if (json.isNull("state")) null else json.optString("state", ""),
                 )
 
                 TokenStore.saveTokens(

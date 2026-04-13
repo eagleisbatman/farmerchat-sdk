@@ -341,6 +341,23 @@ internal class ChatViewModel : ViewModel() {
         try {
             _selectedLanguage.value = code
             loadStarters()
+            // Sync preferred language with server
+            val language = _availableLanguageGroups.value
+                .flatMap { it.languages }
+                .firstOrNull { it.code == code }
+            if (language != null) {
+                val userId = TokenStore.userId
+                if (userId.isNotEmpty()) {
+                    viewModelScope.launch {
+                        try {
+                            ensureGuestTokensSuspend()
+                            apiClient?.setPreferredLanguage(userId, language.id.toString())
+                        } catch (e: Exception) {
+                            Log.w(TAG, "setPreferredLanguage API call failed: ${e.message}")
+                        }
+                    }
+                }
+            }
         } catch (e: Exception) {
             Log.w(TAG, "setLanguage failed", e)
         }
