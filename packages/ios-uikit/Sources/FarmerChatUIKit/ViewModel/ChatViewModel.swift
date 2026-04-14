@@ -97,6 +97,24 @@ internal final class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Startup language sync
+
+    /// Syncs the stored language preference to the server using the persisted integer ID.
+    /// Called inline from sendQuery on the first message of every session — no loadLanguages needed.
+    private func syncStoredLanguageIfNeeded() async {
+        guard let client = apiClient else { return }
+        let storedId = SdkPreferences.selectedLanguageId ?? ""
+        guard !storedId.isEmpty else { return }
+        let userId = await TokenStore.shared.userId
+        guard !userId.isEmpty else { return }
+        do {
+            try await client.setPreferredLanguage(userId: userId, languageId: storedId)
+            print("[\(Self.tag)] syncStoredLanguageIfNeeded: synced languageId=\(storedId)")
+        } catch {
+            print("[\(Self.tag)] syncStoredLanguageIfNeeded: failed (will retry next session): \(error)")
+        }
+    }
+
     // MARK: - Send query
 
     func sendQuery(text: String, inputMethod: String = "text", weatherCtaTriggered: Bool = false) {
@@ -114,9 +132,18 @@ internal final class ChatViewModel: ObservableObject {
             do {
                 await self.ensureGuestTokens()
 
-                // Wait for any in-flight setPreferredLanguage to complete so the server
-                // has the language preference before processing the first query.
-                if let syncTask = self.languageSyncTask {
+                // On the first message of a session ensure the server has the user's
+                // language preference before creating a conversation or sending a query.
+                // Priority: pending languageSyncTask (manual selection / loadLanguages)
+                //           → inline sync from persisted languageId (no loadLanguages needed)
+                if self.conversationId == nil {
+                    if let syncTask = self.languageSyncTask {
+                        await syncTask.value
+                        self.languageSyncTask = nil
+                    } else {
+                        await self.syncStoredLanguageIfNeeded()
+                    }
+                } else if let syncTask = self.languageSyncTask {
                     await syncTask.value
                     self.languageSyncTask = nil
                 }
@@ -217,9 +244,14 @@ internal final class ChatViewModel: ObservableObject {
             guard let self else { return }
             do {
                 await self.ensureGuestTokens()
-                if let syncTask = self.languageSyncTask {
-                    await syncTask.value
-                    self.languageSyncTask = nil
+                if self.conversationId == nil {
+                    if let syncTask = self.languageSyncTask {
+                        await syncTask.value; self.languageSyncTask = nil
+                    } else {
+                        await self.syncStoredLanguageIfNeeded()
+                    }
+                } else if let syncTask = self.languageSyncTask {
+                    await syncTask.value; self.languageSyncTask = nil
                 }
                 if self.conversationId == nil {
                     let userId = await TokenStore.shared.userId
@@ -433,6 +465,8 @@ internal final class ChatViewModel: ObservableObject {
         // in the selected language. Look up the integer id from availableLanguages.
         guard let client = apiClient,
               let lang = availableLanguages.first(where: { $0.code == code }) else { return }
+        // Persist integer ID so sendQuery can sync at startup without waiting for loadLanguages.
+        SdkPreferences.selectedLanguageId = String(lang.id)
         languageSyncTask = Task { [weak self] in
             guard let self else { return }
             do {

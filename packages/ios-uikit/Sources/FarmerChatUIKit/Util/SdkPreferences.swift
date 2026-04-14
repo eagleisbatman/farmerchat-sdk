@@ -10,6 +10,7 @@ final class SdkPreferences {
     private enum Keys {
         static let onboardingDone    = "fc_onboarding_done"
         static let selectedLanguage  = "fc_selected_language"
+        static let selectedLanguageId = "fc_selected_language_id"
         static let deviceId          = "fc_device_id"
     }
 
@@ -25,6 +26,13 @@ final class SdkPreferences {
     static var selectedLanguage: String? {
         get { defaults.string(forKey: Keys.selectedLanguage) }
         set { defaults.set(newValue, forKey: Keys.selectedLanguage) }
+    }
+
+    /// Integer language ID (as String) persisted when user selects a language.
+    /// Used by sendQuery to sync language at startup without waiting for loadLanguages.
+    static var selectedLanguageId: String? {
+        get { defaults.string(forKey: Keys.selectedLanguageId) }
+        set { defaults.set(newValue, forKey: Keys.selectedLanguageId) }
     }
 
     // MARK: - Stable device ID
