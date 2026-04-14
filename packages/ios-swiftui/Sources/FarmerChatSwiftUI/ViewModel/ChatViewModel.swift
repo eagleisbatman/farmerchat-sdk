@@ -128,6 +128,25 @@ internal final class ChatViewModel: ObservableObject {
         }
     }
 
+    // MARK: - Startup language sync
+
+    /// Syncs the stored language preference to the server using the persisted integer ID.
+    /// Called inline from sendQuery on the first message of every session so we never depend
+    /// on loadLanguages completing before the user types their first message.
+    private func syncStoredLanguageIfNeeded() async {
+        guard let client = apiClient else { return }
+        let storedId = UserDefaults.standard.string(forKey: "fc_selected_language_id") ?? ""
+        guard !storedId.isEmpty else { return }
+        let userId = await TokenStore.shared.userId
+        guard !userId.isEmpty else { return }
+        do {
+            try await client.setPreferredLanguage(userId: userId, languageId: storedId)
+            print("[\(Self.tag)] syncStoredLanguageIfNeeded: synced languageId=\(storedId)")
+        } catch {
+            print("[\(Self.tag)] syncStoredLanguageIfNeeded: failed (will retry next session): \(error)")
+        }
+    }
+
     // MARK: - Public Actions
 
     /// Send a weather-context query (tapping the weather widget). Sets weather_cta_triggered = true.
@@ -171,9 +190,18 @@ internal final class ChatViewModel: ObservableObject {
             do {
                 await self.ensureGuestTokens()
 
-                // Wait for any in-flight setPreferredLanguage to complete so the server
-                // has the language preference before processing the first query.
-                if let syncTask = self.languageSyncTask {
+                // On the first message of a session ensure the server has the user's
+                // language preference before creating a conversation or sending a query.
+                // Priority: pending languageSyncTask (from manual selection / loadLanguages)
+                //           → inline sync from persisted languageId (no loadLanguages needed)
+                if self.conversationId == nil {
+                    if let syncTask = self.languageSyncTask {
+                        await syncTask.value
+                        self.languageSyncTask = nil
+                    } else {
+                        await self.syncStoredLanguageIfNeeded()
+                    }
+                } else if let syncTask = self.languageSyncTask {
                     await syncTask.value
                     self.languageSyncTask = nil
                 }
@@ -465,6 +493,9 @@ internal final class ChatViewModel: ObservableObject {
         let previous = selectedLanguage
         selectedLanguage = language.code
         UserDefaults.standard.set(language.code, forKey: "fc_selected_language")
+        // Persist the integer ID so sendQuery can sync the language at startup
+        // without waiting for loadLanguages to complete first.
+        UserDefaults.standard.set(String(language.id), forKey: "fc_selected_language_id")
         emitEvent(.languageChanged(from: previous, to: language.code, timestamp: Date()))
 
         // Sync with server — sendQuery will await this task before sending the first prompt.
