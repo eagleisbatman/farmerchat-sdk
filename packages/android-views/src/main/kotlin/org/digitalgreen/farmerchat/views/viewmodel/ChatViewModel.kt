@@ -701,11 +701,9 @@ internal class ChatViewModel : ViewModel() {
     suspend fun synthesiseAudio(serverMessageId: String, text: String): String? {
         return try {
             val client = apiClient ?: return null
-            val userId = TokenStore.userId
             val resp = client.synthesiseAudio(
                 messageId = serverMessageId,
                 text = text,
-                userId = userId,
             )
             resp.audio
         } catch (e: Exception) {
