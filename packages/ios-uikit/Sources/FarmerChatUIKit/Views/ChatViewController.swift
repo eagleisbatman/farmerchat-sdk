@@ -59,6 +59,11 @@ internal final class ChatViewController: UIViewController {
         setupUI()
         bindViewModel()
         viewModel.loadStarters()
+        // Ensure language list is loaded and auto-sync runs for returning users.
+        // Returning users skip OnboardingViewController so loadLanguages is never called
+        // from there; without this call the server never receives set_preferred_language
+        // and returns response: null.
+        viewModel.loadLanguages()
 
         // Emit chatOpened
         FarmerChat.shared.eventCallback?(.chatOpened(

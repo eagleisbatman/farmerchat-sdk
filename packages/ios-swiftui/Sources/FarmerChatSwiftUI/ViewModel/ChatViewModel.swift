@@ -83,6 +83,8 @@ internal final class ChatViewModel: ObservableObject {
     private var connectivityCancellable: AnyCancellable?
     /// Tracks the in-flight setPreferredLanguage API task so sendQuery can await it first.
     private var languageSyncTask: Task<Void, Never>?
+    /// Prevents loadLanguages from triggering a duplicate auto-sync within the same session.
+    private var didTriggerStartupLanguageSync = false
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
     private var apiClient: ApiClient? { FarmerChat.shared.apiClient }
@@ -518,13 +520,14 @@ internal final class ChatViewModel: ObservableObject {
                     self.availableLanguageGroups = groups
                 }
 
-                // For returning users (onboarding already done) we must re-sync the language
-                // preference to the server every session — in-memory TokenStore means a fresh
-                // userId can appear after an app restart, losing the server-side preference.
+                // For returning users (onboarding already done) re-sync the language preference
+                // once per session. Guarded by didTriggerStartupLanguageSync so repeated
+                // loadLanguages calls (e.g. ChatView re-appear) don't fire duplicate syncs.
                 let onboardingDone = UserDefaults.standard.bool(forKey: "fc_onboarding_done")
                 let storedCode = UserDefaults.standard.string(forKey: "fc_selected_language") ?? ""
-                if onboardingDone, !storedCode.isEmpty,
+                if onboardingDone, !storedCode.isEmpty, !self.didTriggerStartupLanguageSync,
                    let lang = groups.flatMap({ $0.languages }).first(where: { $0.code == storedCode }) {
+                    self.didTriggerStartupLanguageSync = true
                     print("[\(Self.tag)] loadLanguages: auto-syncing language '\(storedCode)' for returning user")
                     self.languageSyncTask = Task { [weak self] in
                         guard let self else { return }

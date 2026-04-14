@@ -69,6 +69,8 @@ internal final class ChatViewModel: ObservableObject {
     private var lastQuery: (text: String, inputMethod: String)?
     /// Tracks the in-flight setPreferredLanguage API task so sendQuery can await it first.
     private var languageSyncTask: Task<Void, Never>?
+    /// Prevents loadLanguages from triggering a duplicate auto-sync within the same session.
+    private var didTriggerStartupLanguageSync = false
 
     private var config: FarmerChatConfig { FarmerChat.getConfig() }
     private var apiClient: ApiClient? { FarmerChat.shared.apiClient }
@@ -379,11 +381,13 @@ internal final class ChatViewModel: ObservableObject {
                 let allLanguages = groups.flatMap { $0.languages }
                 self.availableLanguages = allLanguages
 
-                // For returning users, re-sync the saved language preference every session.
+                // For returning users, re-sync the saved language preference once per session.
+                // Guarded by didTriggerStartupLanguageSync so repeated calls don't duplicate.
                 let onboardingDone = SdkPreferences.isOnboardingDone
                 let storedCode = SdkPreferences.selectedLanguage ?? ""
-                if onboardingDone, !storedCode.isEmpty,
+                if onboardingDone, !storedCode.isEmpty, !self.didTriggerStartupLanguageSync,
                    let lang = allLanguages.first(where: { $0.code == storedCode }) {
+                    self.didTriggerStartupLanguageSync = true
                     print("[\(Self.tag)] loadLanguages: auto-syncing language '\(storedCode)' for returning user")
                     self.languageSyncTask = Task { [weak self] in
                         guard let self else { return }

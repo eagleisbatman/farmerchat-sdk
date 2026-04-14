@@ -141,6 +141,12 @@ struct ChatView: View {
                 }
             }
         }
+        .onAppear {
+            // Ensure language list is loaded and auto-sync runs for returning users.
+            // Without this, returning users who skip onboarding never call loadLanguages,
+            // so the server never receives set_preferred_language and returns response: null.
+            viewModel.loadLanguages()
+        }
     }
 }
 
