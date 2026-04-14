@@ -203,7 +203,7 @@ internal final class ProfileViewController: UIViewController {
 
     @objc private func backTapped() {
         viewModel.navigateTo(screen: .chat)
-        navigationController?.popViewController(animated: true)
+        // ChatViewController.handleScreenNavigation(.chat) → popToViewController handles the pop.
     }
 }
 

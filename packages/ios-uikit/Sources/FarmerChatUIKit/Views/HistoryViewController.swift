@@ -274,15 +274,8 @@ internal final class HistoryViewController: UIViewController {
             }
             .store(in: &cancellables)
 
-        // Navigate back to chat once the viewModel switches to .chat (after loadConversation)
-        viewModel.$currentScreen
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] screen in
-                if screen == .chat {
-                    self?.navigationController?.popViewController(animated: true)
-                }
-            }
-            .store(in: &cancellables)
+        // Navigation back to chat is handled by ChatViewController.handleScreenNavigation(.chat)
+        // via viewModel.navigateTo(.chat) — no duplicate pop needed here.
     }
 
     // MARK: - State
@@ -310,12 +303,14 @@ internal final class HistoryViewController: UIViewController {
     // MARK: - Actions
 
     @objc private func backTapped() {
-        navigationController?.popViewController(animated: true)
+        // Route through ViewModel so ChatViewController.handleScreenNavigation pops
+        // all child VCs correctly via popToViewController(self) — handles stacked case.
+        viewModel.navigateTo(screen: .chat)
     }
 
     @objc private func newConversationTapped() {
         viewModel.startNewConversation()
-        navigationController?.popViewController(animated: true)
+        viewModel.navigateTo(screen: .chat)
     }
 
     @objc private func searchChanged() {
