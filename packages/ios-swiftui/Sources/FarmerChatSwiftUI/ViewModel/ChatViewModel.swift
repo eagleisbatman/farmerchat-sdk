@@ -325,6 +325,7 @@ internal final class ChatViewModel: ObservableObject {
                 let history = try await client.fetchChatHistory(conversationId: convId)
                 self.conversationId = convId
                 self.messages = self.processHistoryItems(history.data)
+                self.chatState = .idle   // re-enable the input bar after history is restored
                 self.currentScreen = .chat
             } catch {
                 print("[\(Self.tag)] loadConversation failed: \(error)")
@@ -574,6 +575,7 @@ internal final class ChatViewModel: ObservableObject {
         case 11:
             return ChatMessage(id: item.messageId, role: "user",
                                text: item.queryText ?? "", inputMethod: "image",
+                               imageData: item.queryMediaFileUrl,
                                serverMessageId: item.messageId)
         case 3:
             return ChatMessage(

@@ -297,7 +297,8 @@ internal final class ChatViewModel: ObservableObject {
                 let history = try await client.fetchChatHistory(conversationId: convId)
                 self.conversationId = convId
                 self.messages = self.processHistoryItems(history.data)
-                self.currentScreen = .chat
+                self.chatState = .idle   // re-enable the input bar after history is restored
+                self.currentScreen = .chat  // triggers ChatVC.handleScreenNavigation → popToViewController
             } catch {
                 print("[\(Self.tag)] loadConversation failed: \(error)")
             }
@@ -338,15 +339,33 @@ internal final class ChatViewModel: ObservableObject {
 
     private func historyItemToMessage(_ item: ChatHistoryItem) -> ChatMessage? {
         switch item.messageTypeId {
-        case 1, 2, 11:   // user text / voice / image
-            let text = item.queryText ?? item.heardQueryText ?? ""
+        case 1: // user text query
+            let text = item.queryText ?? ""
             guard !text.isEmpty else { return nil }
             return ChatMessage(id: item.messageId, role: "user", text: text,
-                               imageData: item.queryMediaFileUrl)
-        case 3, 4, 5, 6: // assistant text / image response
+                               inputMethod: "text", serverMessageId: item.messageId)
+        case 2: // user audio/voice query
+            let text = item.heardQueryText ?? item.queryText ?? ""
+            guard !text.isEmpty else { return nil }
+            return ChatMessage(id: item.messageId, role: "user", text: text,
+                               inputMethod: "audio", serverMessageId: item.messageId)
+        case 11: // user image query
+            return ChatMessage(id: item.messageId, role: "user",
+                               text: item.queryText ?? "",
+                               inputMethod: "image",
+                               imageData: item.queryMediaFileUrl,
+                               serverMessageId: item.messageId)
+        case 3: // AI text response
             let text = item.responseText ?? ""
             guard !text.isEmpty else { return nil }
-            return ChatMessage(id: item.messageId, role: "assistant", text: text)
+            let followUps = item.questions?.map {
+                FollowUpQuestionOption(followUpQuestionId: $0.followUpQuestionId,
+                                      question: $0.question, sequence: $0.sequence)
+            } ?? []
+            return ChatMessage(id: item.messageId, role: "assistant", text: text,
+                               followUps: followUps,
+                               hideTtsSpeaker: item.hideTtsSpeaker ?? false,
+                               serverMessageId: item.messageId)
         default: return nil
         }
     }
