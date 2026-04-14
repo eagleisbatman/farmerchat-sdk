@@ -266,7 +266,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "FarmerChat needs camera access to let you photograph crops and get farming advice.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FarmerChat uses your location to provide farming advice relevant to your area.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FarmerChat needs microphone access so you can ask farming questions by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FarmerChat needs photo library access to let you choose crop photos for farming advice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -293,7 +296,10 @@
 				DEVELOPMENT_TEAM = "";
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "FarmerChat needs camera access to let you photograph crops and get farming advice.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "FarmerChat uses your location to provide farming advice relevant to your area.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "FarmerChat needs microphone access so you can ask farming questions by voice.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FarmerChat needs photo library access to let you choose crop photos for farming advice.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
